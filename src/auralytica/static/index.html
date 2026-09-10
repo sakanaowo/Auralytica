@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Auralytica · Thư viện nhạc của bạn</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header><a class="brand" href="/" aria-label="Auralytica trang chủ"><span class="brand-icon">♫</span> auralytica<span class="local">LOCAL</span></a><span class="header-note">Lịch sử của bạn. Thư viện của bạn.</span></header>
+  <main>
+    <div class="intro"><div><p class="eyebrow">TỪ LỊCH SỬ ĐẾN THƯ VIỆN</p><h1>Tìm lại những bản nhạc đã nghe.</h1><p>Nhạc được gợi ý ở bên trái. Chuyển video qua lại để tạo danh sách của bạn.</p></div><span class="step">01 Import <b>→</b> 02 Duyệt <b>→</b> 03 Tải</span></div>
+    <section id="dropzone" aria-label="Nhập folder Takeout">
+      <span class="folder-icon" aria-hidden="true">↥</span><div><strong>Kéo folder Google Takeout vào đây</strong><p>Folder đã giải nén · Lịch sử JSON · Xử lý trên máy của bạn</p></div>
+      <button id="choose-folder" class="primary">Chọn folder</button>
+      <input id="folder-input" type="file" webkitdirectory multiple hidden aria-label="Chọn folder Takeout">
+    </section>
+    <p id="notice" role="status" aria-live="polite">Chọn folder Takeout để bắt đầu, hoặc tiếp tục duyệt thư viện đã nhập.</p>
+    <div class="workspace">
+      <section id="music" class="panel" aria-labelledby="music-heading">
+        <div class="panel-heading"><div><span class="eyebrow">THƯ VIỆN CỦA BẠN</span><h2 id="music-heading">Đã nhận dạng là nhạc</h2></div><span class="total" id="music-total">0</span></div>
+        <p class="panel-description">Gợi ý có bằng chứng nhạc và các video bạn đã thêm.</p>
+      </section>
+      <section id="rest" class="panel" aria-labelledby="rest-heading">
+        <div class="panel-heading"><div><span class="eyebrow">XEM LẠI KHI CẦN</span><h2 id="rest-heading">Còn lại</h2></div><span class="total" id="rest-total">0</span></div>
+        <p class="panel-description">Ca chưa rõ và video bị loại. Bạn luôn có thể chuyển sang nhạc.</p>
+      </section>
+    </div>
+    <section class="download-panel" aria-labelledby="download-heading">
+      <h2 id="download-heading">Tải thư viện nhạc</h2>
+      <p>Tải mọi video bên Nhạc, kể cả video đang bị ẩn bởi bộ lọc. Giữ audio nguồn; bỏ qua file đã tải còn hợp lệ.</p>
+      <div class="download-actions"><label class="output-label">Thư mục lưu trên máy<input id="output-dir" type="text" value="~/Music/Auralytica" maxlength="4096" spellcheck="false"></label><button id="download-all" class="primary" disabled>Tải toàn bộ</button></div>
+      <p id="download-preview" aria-live="polite">Đang kiểm tra số file cần tải…</p>
+      <label>Lượt tải gần đây <select id="batch-select" aria-label="Chọn lượt tải"></select></label>
+      <div id="batch-details" hidden>
+        <p id="batch-summary" role="status"></p><p id="batch-output"></p>
+        <progress id="batch-progress" value="0" max="1" aria-label="Tiến độ lượt tải"></progress>
+        <div class="download-actions"><button id="stop-download" disabled>Dừng / khôi phục</button><button id="resume-download" disabled>Tiếp tục lượt này</button></div>
+        <p id="batch-error" class="error" role="alert"></p>
+        <div class="table-scroll"><table><thead><tr><th>VIDEO</th><th>TRẠNG THÁI / TIẾN ĐỘ</th><th>LỖI</th></tr></thead><tbody id="download-items"></tbody></table></div>
+        <div class="download-actions"><button id="batch-prev" aria-label="Trang tải trước">←</button><span id="batch-page"></span><button id="batch-next" aria-label="Trang tải sau">→</button></div>
+      </div>
+      <p id="download-error" class="error" role="alert"></p>
+      <p>Đóng tab không dừng tải. Dừng lượt tải trước khi sửa danh sách; tiếp tục lượt cũ vẫn dùng danh sách đã chốt của lượt đó.</p>
+    </section>
+    <footer><div><strong>Lựa chọn được lưu tự động</strong><p>Chuyển nhóm không xóa file đã tải. Không cần duyệt hết bên còn lại.</p></div></footer>
+  </main>
+  <dialog id="source-dialog"><form method="dialog"><h2>Chọn nguồn lịch sử</h2><p>Folder có nhiều nguồn. Chọn lịch sử và library thuộc cùng một export.</p><label>Lịch sử xem<select id="history-source"></select></label><label>Music library (tùy chọn)<select id="library-source"></select></label><div class="dialog-actions"><button value="cancel">Hủy</button><button id="import-source" value="import" class="primary">Import nguồn này</button></div></form></dialog>
+  <template id="panel-template">
+    <div class="filters"><label class="search-label"><span class="sr-only">Tìm tiêu đề hoặc kênh</span><input class="search" type="search" maxlength="500" placeholder="Tìm tiêu đề hoặc kênh…"></label><label><span class="sr-only">Lọc lý do</span><select class="reason"><option value="">Mọi lý do</option><option value="manual">Đã chuyển tay</option><option value="topic_channel">Kênh Topic</option><option value="music_library">Music library</option><option value="music_hint">Có dấu hiệu nhạc</option><option value="unknown">Chưa rõ</option><option value="talk_context">Ngữ cảnh nói chuyện</option><option value="conflicting_evidence">Bằng chứng mâu thuẫn</option><option value="shorts_url">YouTube Shorts</option><option value="channel_decision">Nhãn kênh</option></select></label><label><span class="sr-only">Sắp xếp</span><select class="sort"><option value="watch_count">Xem nhiều nhất</option><option value="title">Tiêu đề A–Z</option><option value="channel">Kênh A–Z</option></select></label></div>
+    <div class="selection-bar"><label><input type="checkbox" class="select-page"> Chọn trang này</label><button class="bulk-move" disabled>Chuyển đã chọn</button></div>
+    <div class="table-scroll"><table><thead><tr><th><span class="sr-only">Chọn</span></th><th>VIDEO</th><th>LƯỢT XEM</th><th><span class="sr-only">Chuyển nhóm</span></th></tr></thead><tbody></tbody></table><p class="empty" hidden></p></div>
+    <div class="pagination"><span class="results">Đang tải…</span><div><button class="prev" aria-label="Trang trước" disabled>←</button><span class="page-label">1 / 1</span><button class="next" aria-label="Trang sau" disabled>→</button></div></div>
+  </template>
+</body>
+</html>

@@ -1,0 +1,56 @@
+"""Isolated yt-dlp child: JSON protocol on stdout, no database access."""
+
+import json
+from pathlib import Path
+import re
+import sys
+
+import yt_dlp
+
+
+def emit(message):
+    print(json.dumps(message, ensure_ascii=False), flush=True)
+
+
+class QuietLogger:
+    def debug(self, message): pass
+    def info(self, message): pass
+    def warning(self, message): pass
+    def error(self, message): pass
+
+
+def main():
+    video_id, directory = sys.argv[1:]
+    if not re.fullmatch(r'[A-Za-z0-9_-]{11}',video_id):
+        raise ValueError('Invalid video ID')
+    def progress(data):
+        emit({'type':'progress','downloaded_bytes':data.get('downloaded_bytes',0),
+              'total_bytes':data.get('total_bytes') or data.get('total_bytes_estimate')})
+    options = {
+        'format':'bestaudio', 'noplaylist':True, 'quiet':True, 'no_warnings':True,
+        'logger':QuietLogger(), 'progress_hooks':[progress],
+        'outtmpl':str(Path(directory)/'audio.%(ext)s'),
+        'continuedl':True, 'nopart':False, 'overwrites':False,
+        'socket_timeout':15, 'retries':2, 'fragment_retries':2,
+        'js_runtimes':{'node':{}},
+    }
+    try:
+        with yt_dlp.YoutubeDL(options) as ydl:
+            info = ydl.extract_info('https://www.youtube.com/watch?v='+video_id, download=True)
+            downloaded = (info.get('requested_downloads') or [info])[0]
+            emit({'type':'result','id':info['id'],
+                  'path':downloaded.get('filepath') or ydl.prepare_filename(info),
+                  'acodec':downloaded.get('acodec', info.get('acodec')),
+                  'vcodec':downloaded.get('vcodec', info.get('vcodec'))})
+    except Exception as exc:
+        message = str(exc)
+        fatal = isinstance(exc, OSError) or any(marker in message for marker in ('No space left on device','Permission denied','Read-only file system'))
+        code = 'filesystem' if fatal else 'download_error'
+        if not fatal and any(marker in message.lower() for marker in ('private video','video unavailable','has been removed')):
+            code = 'unavailable'
+        emit({'type':'error','code':code,'message':message[:1500],'fatal':fatal})
+        raise SystemExit(1)
+
+
+if __name__ == '__main__':
+    main()
