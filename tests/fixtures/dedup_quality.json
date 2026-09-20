@@ -1,0 +1,31 @@
+{
+  "scope": "Synthetic semantic labels stored separately from title-alias-v1 output; positive means the pair is useful in a same-song review group, not that one recording should be deleted.",
+  "videos": [
+    {"id": "qa000000001", "title": "Song Alpha (Official Video)", "channel": "Alpha Artist", "case": "same_song_same_recording"},
+    {"id": "qa000000002", "title": "Song Alpha (Lyrics)", "channel": "Alpha Archive", "case": "same_song_same_recording"},
+    {"id": "qa000000003", "title": "Shoujo A (Official Video)", "channel": "Siinamota", "case": "same_song_multilingual"},
+    {"id": "qa000000004", "title": "少女A", "channel": "椎名もた", "case": "same_song_multilingual"},
+    {"id": "qa000000005", "title": "Northern Lights - live", "channel": "Aurora Band", "case": "same_song_different_version"},
+    {"id": "qa000000006", "title": "Northern Lights (Official Audio)", "channel": "Aurora Band", "case": "same_song_different_version"},
+    {"id": "qa000000007", "title": "Home", "channel": "Singer One", "case": "different_song_common_title"},
+    {"id": "qa000000008", "title": "HOME [Official Audio]", "channel": "Singer Two", "case": "different_song_common_title"},
+    {"id": "qa000000009", "title": "Plastic Love", "channel": "Mariya Takeuchi", "case": "same_song_multilingual_unassisted"},
+    {"id": "qa000000010", "title": "竹内まりや - Plastic Love", "channel": "竹内まりや", "case": "same_song_multilingual_unassisted"},
+    {"id": "qa000000011", "title": "Starfall", "channel": "Artist Red", "case": "different_song_similar_name"},
+    {"id": "qa000000012", "title": "Starlight", "channel": "Artist Blue", "case": "different_song_similar_name"},
+    {"id": "qa000000013", "title": "", "channel": "", "case": "missing_title_and_artist"},
+    {"id": "qa000000014", "title": "", "channel": "", "case": "missing_title_and_artist"},
+    {"id": "qa000000015", "title": "Dreamscape (Official Video)", "channel": "", "case": "same_song_missing_artist"},
+    {"id": "qa000000016", "title": "Dreamscape lyrics", "channel": "", "case": "same_song_missing_artist"}
+  ],
+  "confirmed_aliases": [
+    ["Shoujo A", "少女A"]
+  ],
+  "positive_pairs": [
+    ["qa000000001", "qa000000002"],
+    ["qa000000003", "qa000000004"],
+    ["qa000000005", "qa000000006"],
+    ["qa000000009", "qa000000010"],
+    ["qa000000015", "qa000000016"]
+  ]
+}

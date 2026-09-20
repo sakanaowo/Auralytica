@@ -2,10 +2,12 @@
 
 from contextlib import contextmanager
 import fcntl
+import hashlib
+import json
 from pathlib import Path
 import tempfile
 
-from .storage import BatchBusyError, get_setting, set_setting, transaction
+from .storage import BatchBusyError, RevisionConflict, get_setting, set_setting, transaction
 
 
 def get_batch(db, batch_id):
@@ -39,29 +41,83 @@ def _completed_file(db, video_id, output):
     return next((row for row in rows if _valid_file(row['file_path'], row['file_size'], output)), None)
 
 
-def create_batch(db, output_dir):
-    """Snapshot the whole effective music group, independent of any UI filters."""
+def eligible_snapshot(db, output_dir):
+    """Build the download candidate set and a token from persisted state and files."""
+    if not str(output_dir).strip():
+        raise ValueError('Cần thư mục tải.')
+    active_import = get_setting(db, 'active_import')
+    if active_import is None:
+        raise ValueError('Hãy import Takeout trước.')
+    output = Path(output_dir).expanduser().resolve()
+    rows = db.execute(
+        "SELECT DISTINCT v.id,COALESCE(s.keep,1) AS keep FROM videos v "
+        "JOIN watch_events e ON e.video_id=v.id "
+        "LEFT JOIN download_selections s ON s.video_id=v.id "
+        "WHERE e.import_id=? AND COALESCE(v.user_group,v.auto_group)='music' ORDER BY v.id",
+        (active_import,),
+    ).fetchall()
+    ids = [row['id'] for row in rows if row['keep']]
+    file_states = []
+    completed = {}
+    for video_id in ids:
+        previous = _completed_file(db, video_id, output)
+        completed[video_id] = previous
+        if previous is None:
+            file_states.append((video_id, None))
+            continue
+        path = Path(previous['file_path'])
+        try:
+            stat = path.stat()
+        except OSError:
+            completed[video_id] = None
+            file_states.append((video_id, None))
+            continue
+        file_states.append((video_id, str(path.resolve()), stat.st_size, stat.st_mtime_ns))
+    token_input = {
+        'active_import': int(active_import),
+        'output_dir': str(output),
+        'selection_revision': int(get_setting(db, 'dedup_selection_revision') or 0),
+        'music': [(row['id'], int(row['keep'])) for row in rows],
+        'files': file_states,
+    }
+    token = hashlib.sha256(json.dumps(token_input, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    skipped = sum(value is not None for value in completed.values())
+    return {
+        'output_dir': str(output),
+        'music': len(rows),
+        'total': len(rows),
+        'excluded': len(rows) - len(ids),
+        'kept': len(ids),
+        'skipped': skipped,
+        'queued': len(ids) - skipped,
+        'needed': len(ids) - skipped,
+        'token': token,
+        '_ids': ids,
+        '_completed': completed,
+    }
+
+
+def create_batch(db, output_dir, *, expected_token=None):
+    """Snapshot all kept music, independent of any UI filters or pagination."""
     with transaction(db):
         active = _active(db)
         if active:
             return dict(get_batch(db, active[0]), reused=True)
-        active_import = get_setting(db, 'active_import')
-        if active_import is None:
-            raise ValueError('Hãy import Takeout trước.')
-        ids = [row[0] for row in db.execute(
-            "SELECT DISTINCT v.id FROM videos v JOIN watch_events e ON e.video_id=v.id "
-            "WHERE e.import_id=? AND COALESCE(v.user_group,v.auto_group)='music' ORDER BY v.id", (active_import,))]
+        snapshot = eligible_snapshot(db, output_dir)
+        if expected_token is not None and expected_token != snapshot['token']:
+            raise RevisionConflict('Danh sách hoặc file đã đổi; kiểm tra preview rồi tải lại.')
+        ids = snapshot['_ids']
         if not ids:
-            raise ValueError('Nhóm nhạc đang trống.')
-        if not str(output_dir).strip():
-            raise ValueError('Cần thư mục tải.')
-        output = Path(output_dir).expanduser().resolve()
+            raise ValueError('Không còn bản nhạc nào được giữ để tải.')
+        output = Path(snapshot['output_dir'])
         output.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryFile(dir=output):
             pass  # Check actual write permission rather than os.access().
         batch_id = db.execute('INSERT INTO download_batches(output_dir) VALUES (?)', (str(output),)).lastrowid
         queued = 0
         for video_id in ids:
+            # Recheck immediately before persisting: a valid preview file may have
+            # disappeared while the output directory was being prepared.
             previous = _completed_file(db, video_id, output)
             queued += previous is None
             db.execute('INSERT INTO download_items(batch_id,video_id,status,file_path,file_size) VALUES (?,?,?,?,?)',
@@ -69,7 +125,8 @@ def create_batch(db, output_dir):
                         previous['file_path'] if previous else None, previous['file_size'] if previous else None))
         if not queued:
             db.execute("UPDATE download_batches SET status='completed',finished_at=CURRENT_TIMESTAMP WHERE id=?", (batch_id,))
-        return dict(get_batch(db, batch_id), reused=False)
+        return dict(get_batch(db, batch_id), reused=False, music=snapshot['music'],
+                    excluded=snapshot['excluded'], kept=snapshot['kept'])
 
 
 @contextmanager

@@ -1,7 +1,9 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
-const reasons = {manual:'Đã chuyển tay',topic_channel:'Kênh Topic',music_library:'Music library',music_hint:'Có dấu hiệu nhạc · cần duyệt',unknown:'Chưa rõ',talk_context:'Ngữ cảnh nói chuyện · cần duyệt',conflicting_evidence:'Bằng chứng mâu thuẫn',shorts_url:'YouTube Shorts',channel_decision:'Theo nhãn kênh'};
+const reasons = {ytmusic_strong:'Metadata YouTube Music',ytmusic_ugc_recurrence:'YouTube Music · xem lại nhiều ngày',manual:'Đã chuyển tay',topic_channel:'Kênh Topic',music_library:'Music library',music_hint:'Có dấu hiệu nhạc · cần duyệt',unknown:'Chưa rõ',talk_context:'Ngữ cảnh nói chuyện · cần duyệt',conflicting_evidence:'Bằng chứng mâu thuẫn',shorts_url:'YouTube Shorts',channel_decision:'Theo nhãn kênh'};
+const pageName = location.pathname.slice(1);
 const groups = {};
+let workflow = null;
 let busy = false;
 let batchActive = false;
 let candidates = [];
@@ -24,7 +26,7 @@ function controls(s) {
   all.indeterminate = !!s.selected.size && s.selected.size < s.items.length;
   s.el.querySelectorAll('tbody input, .row-move').forEach(el => { el.disabled = locked; });
   $('.prev',s.el).disabled = busy || s.loading || s.page <= 1;
-  $('.next',s.el).disabled = busy || s.loading || s.page >= Math.max(1,Math.ceil(s.count/50));
+  $('.next',s.el).disabled = busy || s.loading || s.page >= Math.max(1,Math.ceil(s.count/s.pageSize));
 }
 function lock(value) { busy = value; $('#choose-folder').disabled = value || batchActive; for (const s of Object.values(groups)) controls(s); }
 function render(s) {
@@ -56,19 +58,22 @@ function render(s) {
   const empty = $('.empty',s.el); empty.hidden = !!s.items.length;
   empty.textContent = 'Không có video phù hợp. Thử đổi bộ lọc hoặc nhập folder Takeout.';
   $('.results',s.el).textContent = `${s.count.toLocaleString('vi-VN')} video khớp bộ lọc`;
-  $('.page-label',s.el).textContent = `${s.page} / ${Math.max(1,Math.ceil(s.count/50))}`;
+  $('.page-label',s.el).textContent = `${s.page} / ${Math.max(1,Math.ceil(s.count/s.pageSize))}`;
   controls(s);
 }
 async function load(s) {
+  $('.list-retry',s.el).hidden = true;
+  $('.results',s.el).textContent = 'Đang tải…';
   const revision = ++s.revision; s.loading = true; s.selected.clear(); controls(s);
-  const params = new URLSearchParams({group:s.name,search:$('.search',s.el).value,sort:$('.sort',s.el).value,page:s.page,page_size:50});
+  const params = new URLSearchParams({group:s.name,search:$('.search',s.el).value,sort:$('.sort',s.el).value,page:s.page,page_size:s.pageSize});
+  const channel = $('.channel',s.el).value.trim(); if (channel) params.set('channel',channel);
   const reason = $('.reason',s.el).value; if (reason) params.set('reason',reason);
   try {
     const data = await api(`/api/videos?${params}`);
     if (revision !== s.revision) return;
     s.count = data.filtered_count;
-    const maxPage = Math.max(1,Math.ceil(s.count/50));
-    if (s.page > maxPage) { s.page = maxPage; return load(s); }
+    const maxPage = Math.max(1,Math.ceil(s.count/s.pageSize));
+    if (s.page > maxPage) { s.page = maxPage; saveExplore(false); return load(s); }
     s.items = data.items;
     for (const name of ['music','rest']) $(`#${name}-total`).textContent = String(data.group_totals[name]);
     s.loading = false; render(s);
@@ -76,10 +81,14 @@ async function load(s) {
     if (revision !== s.revision) return;
     s.loading = false; s.items = []; s.count = 0; render(s);
     $('.empty',s.el).textContent = error.message;
+    $('.list-retry',s.el).hidden = false;
     notice(error.message,true);
   }
 }
-async function refresh() { await Promise.all(Object.values(groups).map(load)); await updatePreview(); }
+async function refresh() {
+  if (pageName === 'explore') await Promise.all([load(groups.music), ...(!$('#rest').hidden ? [load(groups.rest)] : []), loadSummary()]);
+  if (pageName === 'download') await updatePreview();
+}
 async function moveItems(s, ids) {
   if (busy || batchActive || s.loading || !ids.length) return;
   lock(true);
@@ -89,21 +98,24 @@ async function moveItems(s, ids) {
   } catch (error) { notice(error.message,true); }
   finally { lock(false); }
 }
-for (const name of ['music','rest']) {
+for (const name of pageName === 'explore' ? ['music','rest'] : []) {
   const el = $(`#${name}`); el.append($('#panel-template').content.cloneNode(true));
-  const s = {name,el,page:1,count:0,items:[],selected:new Set(),loading:false,revision:0}; groups[name] = s;
+  const s = {name,el,page:1,pageSize:50,count:0,items:[],selected:new Set(),loading:false,revision:0}; groups[name] = s;
   let timer;
-  $('.search',el).addEventListener('input',() => {
+  for (const field of ['.search','.channel']) $(field,el).addEventListener('input',() => {
     clearTimeout(timer); s.selected.clear(); s.loading = true; ++s.revision; controls(s); s.page = 1;
-    timer = setTimeout(() => load(s),200);
+    timer = setTimeout(() => { saveExplore(); load(s); },200);
+    s.cancelSearch = () => clearTimeout(timer);
   });
-  for (const selector of ['.reason','.sort']) $(selector,el).addEventListener('change',() => { s.page = 1; load(s); });
-  $('.prev',el).addEventListener('click',() => { --s.page; load(s); });
-  $('.next',el).addEventListener('click',() => { ++s.page; load(s); });
+  for (const selector of ['.reason','.sort']) $(selector,el).addEventListener('change',() => { s.page = 1; saveExplore(); load(s); });
+  $('.page-size',el).addEventListener('change',() => { s.pageSize = Number($('.page-size',el).value); s.page = 1; saveExplore(); load(s); });
+  $('.prev',el).addEventListener('click',() => { --s.page; saveExplore(); load(s); });
+  $('.next',el).addEventListener('click',() => { ++s.page; saveExplore(); load(s); });
   $('.select-page',el).addEventListener('change',event => {
     s.selected = new Set(event.target.checked ? s.items.map(i => i.id) : []);
     el.querySelectorAll('tbody input').forEach(input => { input.checked = event.target.checked; }); controls(s);
   });
+  $('.list-retry',el).addEventListener('click',() => load(s));
   $('.bulk-move',el).addEventListener('click',() => moveItems(s,[...s.selected]));
 }
 
@@ -125,10 +137,9 @@ async function importFiles(history, library) {
   try {
     const data = new FormData(); data.append('files',history.file,'watch-history.json');
     if (library) data.append('files',library.file,'music library songs.csv');
-    if (history.file.size + (library?.file.size || 0) > 63*1024*1024) throw new Error('Dữ liệu vượt 63 MiB. Dùng CLI để nhập nguồn lớn hơn.');
-    const result = await api('/api/imports',{method:'POST',body:data});
-    for (const s of Object.values(groups)) s.page = 1;
-    await refresh(); notice(`Đã nhập ${result.statistics.unique_videos.toLocaleString('vi-VN')} video · ${result.statistics.video_events.toLocaleString('vi-VN')} lượt xem${result.reused ? ' · Nguồn đã có, giữ lựa chọn trước đó' : ''}.`);
+    if (history.file.size + (library?.file.size || 0) > 63*1024*1024) throw new Error('Dữ liệu vượt giới hạn upload 63 MiB của bản local hiện tại.');
+    await api('/api/imports',{method:'POST',body:data});
+    location.assign('/explore');
   } catch (error) { notice(error.message,true); }
   finally { lock(false); $('#folder-input').value = ''; }
 }
@@ -179,7 +190,7 @@ zone.addEventListener('drop',async event => {
 
 const statuses = {queued:'Đang chờ',running:'Đang tải',paused:'Đã dừng',completed:'Hoàn tất',partial:'Có lỗi',failed:'Thất bại',skipped:'Đã có file',cancelled:'Đã hủy'};
 let selectedBatch = null, batchPage = 1, currentBatch = null, downloadAction = false;
-let previewNeeded = 0, previewRevision = 0, polling = false;
+let previewNeeded = 0, previewToken = null, previewRevision = 0, polling = false;
 function downloadControls() {
   $('#download-all').disabled = busy || batchActive || downloadAction || previewNeeded <= 0;
   $('#output-dir').disabled = batchActive || downloadAction;
@@ -189,14 +200,15 @@ function downloadControls() {
 }
 async function updatePreview() {
   const revision = ++previewRevision;
-  previewNeeded = 0; downloadControls();
+  previewNeeded = 0; previewToken = null; downloadControls();
   const output = $('#output-dir').value.trim();
   if (!output) { $('#download-preview').textContent = 'Nhập thư mục lưu để tải.'; return; }
   try {
     const data = await api('/api/downloads/preview?' + new URLSearchParams({output_dir:output}));
     if (revision !== previewRevision) return;
     previewNeeded = data.needed;
-    $('#download-preview').textContent = `${data.needed} file cần tải / ${data.total} video nhạc · ${data.skipped} file đã có`;
+    previewToken = data.token;
+    $('#download-preview').textContent = `${data.music} video nhạc · ${data.excluded} loại bởi Deduplicate · ${data.kept} giữ lại · ${data.skipped} file đã có · ${data.needed} file cần tải`;
   } catch (error) { if (revision === previewRevision) $('#download-preview').textContent = error.message; }
   downloadControls();
 }
@@ -247,12 +259,12 @@ async function downloadCommand(action) {
   try {
     const options = {method:'POST',headers:{'Content-Type':'application/json'}};
     const url = action === 'start' ? '/api/downloads' : `/api/downloads/${selectedBatch}/${action}`;
-    if (action === 'start') options.body = JSON.stringify({output_dir:$('#output-dir').value.trim()});
+    if (action === 'start') options.body = JSON.stringify({output_dir:$('#output-dir').value.trim(),preview_token:previewToken});
     const data = await api(url,options);
     selectedBatch = data.batch_id; batchPage = 1;
     batchActive = ['queued','running'].includes(data.status);
     await pollDownloads();
-  } catch (error) { notice(error.message,true); }
+  } catch (error) { notice(error.message,true); if (action === 'start') await updatePreview(); }
   finally { downloadAction = false; downloadControls(); }
 }
 $('#download-all').addEventListener('click',() => downloadCommand('start'));
@@ -264,9 +276,7 @@ $('#batch-next').addEventListener('click',() => { ++batchPage; pollDownloads(); 
 let outputTimer;
 try { $('#output-dir').value = localStorage.getItem('auralytica-output') || $('#output-dir').value; } catch {}
 $('#output-dir').addEventListener('input',() => {
-  ++previewRevision; previewNeeded = 0; downloadControls(); clearTimeout(outputTimer);
+  ++previewRevision; previewNeeded = 0; previewToken = null; downloadControls(); clearTimeout(outputTimer);
   try { localStorage.setItem('auralytica-output',$('#output-dir').value); } catch {}
   outputTimer = setTimeout(updatePreview,250);
 });
-refresh(); pollDownloads();
-setInterval(pollDownloads,1000);

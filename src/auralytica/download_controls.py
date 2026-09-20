@@ -1,24 +1,18 @@
-"""Shared CLI/web download controls; workers outlive the requesting client."""
+"""Web download controls; background workers outlive the requesting client."""
 from contextlib import closing
 from pathlib import Path
 import subprocess
 import sys
 import threading
 
-from .batches import create_batch, get_batch, pause_batch, recover_batch, resume_batch, _completed_file
+from .batches import create_batch, eligible_snapshot, get_batch, pause_batch, recover_batch, resume_batch
 from .downloader import request_stop
 from .storage import BatchBusyError, get_setting, open_database, set_setting
 
 
 def preview(db, output_dir):
-    if not str(output_dir).strip():
-        raise ValueError('Cần thư mục tải.')
-    output = Path(output_dir).expanduser().resolve()
-    ids = [row[0] for row in db.execute(
-        "SELECT DISTINCT v.id FROM videos v JOIN watch_events e ON e.video_id=v.id "
-        "WHERE e.import_id=? AND COALESCE(v.user_group,v.auto_group)='music'", (get_setting(db, 'active_import'),))]
-    skipped = sum(_completed_file(db, video_id, output) is not None for video_id in ids)
-    return dict(output_dir=str(output), total=len(ids), skipped=skipped, needed=len(ids)-skipped)
+    snapshot = eligible_snapshot(db, output_dir)
+    return {key: value for key, value in snapshot.items() if not key.startswith('_')}
 
 
 def batch_status(db, batch_id=None, *, page=1, page_size=50):
@@ -52,9 +46,9 @@ def launch_worker(database, batch_id):
     threading.Thread(target=process.wait, daemon=True).start()
 
 
-def start_download(db, database, *, output_dir=None, batch_id=None, launcher=launch_worker):
+def start_download(db, database, *, output_dir=None, preview_token=None, batch_id=None, launcher=launch_worker):
     if batch_id is None:
-        batch = create_batch(db, output_dir)
+        batch = create_batch(db, output_dir, expected_token=preview_token)
     else:
         current = get_batch(db, batch_id)
         if current['status'] == 'running':

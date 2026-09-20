@@ -8,13 +8,15 @@ description: Thiết kế MVP về luồng sử dụng, dữ liệu, thành ph�
 
 Cập nhật: **2026-09-10**. Chốt bốn phần: luồng sử dụng, dữ liệu dùng chung, thành phần và xử lý lỗi/khôi phục. Thiết kế đã triển khai T01–T10 và [kiểm chứng chức năng T11](../testing/ACCEPTANCE.md); [T12 quickstart](../testing/QUICKSTART.md) đã đạt.
 
+> Tài liệu này mô tả MVP cũ và được giữ làm lịch sử. Thiết kế hiện hành là [web workflow](2026-09-20-feature-web-workflow.md); các subcommand nghiệp vụ nhắc bên dưới đã bị gỡ ở WFT08.
+
 Nguồn: [Requirements](../requirements/README.md) · [Dashboard dự án](../../../PROJECT_DASHBOARD.md).
 
 ## Architecture Overview
 
 ### 1. Luồng sử dụng và giao diện
 
-1. Chạy `auralytica serve` để mở web local; kéo thả hoặc chọn folder Takeout.
+1. Chạy `auralytica` để mở web local; kéo thả hoặc chọn folder Takeout.
 2. Đọc lịch sử JSON, gom theo video ID và phân vào hai danh sách. Bằng chứng nhạc mạnh đưa sang trái; ca chưa rõ hoặc bị loại nằm bên phải với lý do.
 3. Chuyển từng video hoặc các dòng đã tick qua lại để sửa kết quả. Lưu quyết định ngay khi backend xác nhận.
 4. Chọn đường dẫn thư mục tải trên máy, bấm **Tải toàn bộ**. Backend chụp danh sách mọi video bên nhạc thành một batch cố định.
@@ -45,7 +47,6 @@ Tiến độ batch · Thành công · Đã có file · Lỗi · Còn chờ
 flowchart TD
     Web[Web: hai danh sách] --> API[HTTP localhost]
     API --> Core[Python application services]
-    CLI[CLI] --> Core
     Core --> DB[(SQLite)]
     Core --> Worker[Worker tải tuần tự]
     Worker --> YTDLP[yt-dlp]
@@ -71,25 +72,25 @@ Nhóm hiệu lực là `user_group` nếu có, nếu không dùng `auto_group`; 
 
 Import mới thay lịch sử đang xem, giữ quyết định và kết quả tải theo video ID. Số lượt xem tính trên import đang xem; MVP chưa cộng gộp nhiều export chồng lặp. Chỉ công bố import mới sau khi parse và lưu thành công.
 
-Chuyển hàng loạt và tạo snapshot dùng transaction. CLI/web dùng chung SQLite và khóa worker liên tiến trình; chỉ một tiến trình sở hữu worker tại một thời điểm. File audio nằm ngoài database.
+Chuyển hàng loạt và tạo snapshot dùng transaction. Web dùng SQLite và khóa worker liên tiến trình; chỉ một tiến trình sở hữu worker tại một thời điểm. File audio nằm ngoài database.
 
 ## API Design
 
 Các giao diện dưới đây là hợp đồng dự kiến cho implementation. HTTP API phục vụ giao diện trên máy; không yêu cầu API phân loại bên ngoài.
 
-| Thao tác | CLI / HTTP local |
+| Thao tác | Web / HTTP local nội bộ |
 | --- | --- |
-| Mở web | `auralytica serve` |
-| Import | `auralytica import <folder>` / `POST /api/imports`: file JSON lịch sử và library tùy chọn; trả thống kê nhập. |
-| Xem danh sách | `auralytica list --group music` hoặc `rest` / `GET /api/videos`: group, search, channel, reason, sort, page, page_size; trả dòng, filtered_count và tổng hai nhóm. |
-| Chuyển nhóm | `auralytica move <ids> --to music` hoặc `rest` / `POST /api/videos/move`: video_ids, to_group. |
-| Tải toàn bộ | `auralytica download --output <path>` / `POST /api/downloads`: output_dir; server tự lấy mọi video bên nhạc, trả batch ID và số cần tải/bỏ qua. |
-| Tiến độ | `auralytica status` / `GET /api/downloads/{id}`: tổng và kết quả từng file có phân trang. |
-| Dừng/tiếp tục | `auralytica stop <id>`, `auralytica resume <id>` / `POST /api/downloads/{id}/stop`, `/resume`. |
+| Mở web | `auralytica` hoặc desktop entry |
+| Import | Trang Import / `POST /api/imports`: file JSON lịch sử và library tùy chọn; trả thống kê nhập. |
+| Xem danh sách | Trang Explore / `GET /api/videos`: group, search, channel, reason, sort, page, page_size. |
+| Chuyển nhóm | Nút từng dòng/chọn trang / `POST /api/videos/move`. |
+| Tải toàn bộ | Trang Download / `POST /api/downloads`: output_dir + preview token. |
+| Tiến độ | Bảng lượt tải / `GET /api/downloads/{id}`. |
+| Dừng/tiếp tục | Nút trên batch / `POST /api/downloads/{id}/stop`, `/resume`. |
 
-CLI gọi trực tiếp core, không cần chạy web server nhưng phải dùng cùng khóa worker. Worker chạy ngoài request HTTP; web polling khi batch hoạt động. Nhấp tải lặp trả batch đang chạy, không tạo việc trùng; mutation bị khóa trả lỗi 409 và lý do rõ.
+Worker chạy ngoài request HTTP; web polling khi batch hoạt động. Nhấp tải lặp trả batch đang chạy, không tạo việc trùng; mutation bị khóa trả lỗi 409 và lý do rõ.
 
-Browser không cung cấp đường dẫn tuyệt đối của folder đã kéo thả: frontend chọn các file cần thiết trong cây folder và gửi về localhost. Nếu có nhiều lịch sử, cho chọn nguồn; không upload cả Takeout. Không dùng relative path từ browser làm đường dẫn ghi file. CLI đọc đường dẫn native.
+Browser không cung cấp đường dẫn tuyệt đối của folder đã kéo thả: frontend chọn các file cần thiết trong cây folder và gửi về localhost. Nếu có nhiều lịch sử, cho chọn nguồn; không upload cả Takeout. Không dùng relative path từ browser làm đường dẫn ghi file.
 
 Thư mục tải là ô nhập đường dẫn trên máy chạy backend, mặc định `~/Music/Auralytica`, nhớ lần dùng gần nhất và kiểm tra quyền ghi. Không giả định folder picker của browser cho phép backend ghi vào một đường dẫn tuyệt đối.
 
@@ -102,7 +103,7 @@ Thư mục tải là ô nhập đường dẫn trên máy chạy backend, mặc 
 | Importer | Tìm/parse JSON, chuẩn hóa ID, lưu sự kiện và video, thống kê lỗi; đối chiếu library chỉ với ID trong lịch sử. |
 | Suggestions | Topic/library là bằng chứng mạnh sau kiểm tra loại trừ; tiêu đề/kênh/lặp lại chỉ hỗ trợ. Lưu lý do và nguồn, không biến thiếu từ khóa thành non-music. |
 | Review service | Tính nhóm hiệu lực, tìm/lọc/phân trang, chuyển nhóm có transaction và bảo toàn sửa tay. |
-| Web + CLI | Hai cửa vào cùng dịch vụ; web có ảnh/link, nút chuyển và một nút tải toàn bộ. |
+| Web | Giao diện duy nhất; có ảnh/link, nút chuyển và một nút tải toàn bộ. |
 | Downloader | Snapshot, yt-dlp audio nguồn, tiến độ, dừng/tiếp tục và lỗi từng video. |
 | Storage | SQLite, migrations, lưu review/batch, kiểm tra file và khóa worker. |
 

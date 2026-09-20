@@ -1,102 +1,88 @@
 # Auralytica
 
-Tải audio nhạc từ lịch sử YouTube trong Google Takeout bằng CLI hoặc web chạy trên máy. Duyệt hai nhóm **Nhạc / Còn lại**, chuyển video qua lại, rồi bấm **Tải toàn bộ**.
+Auralytica là ứng dụng web chạy trên máy để lấy danh sách video từ Google Takeout, tìm video nhạc, so các video có thể cùng bài và tải audio nguồn của những bản bạn giữ.
 
-MVP Linux/JSON đã hoàn tất T01–T12. Xem [dashboard dự án](PROJECT_DASHBOARD.md), [nghiệm thu chức năng](docs/ai/testing/ACCEPTANCE.md) và [kiểm chứng cài đặt](docs/ai/testing/QUICKSTART.md).
+Luồng sử dụng duy nhất là **Import → Explore → Deduplicate → Download**. Các nghiệp vụ nhập, phân loại, metadata, chọn bản và điều khiển tải đều nằm trên web; không cần truyền CSV hoặc chạy lệnh riêng giữa các bước.
 
-## Bắt đầu
+## Cài đặt và mở ứng dụng
 
-Cần Linux, **uv**, Python **≥3.11 có sqlite3** và **Node.js** trong PATH để yt-dlp xử lý YouTube. Môi trường đã kiểm chứng: Python 3.11.16, Node.js 24.19.0, uv 0.12.10. FFmpeg/ffprobe dùng để kiểm tra audio trong bài smoke; ứng dụng giữ codec nguồn, không chuyển mã sang MP3. Không cần API key, Spotify, model audio hoặc notebook.
+Cần Linux, Python **≥3.11 có sqlite3**, [uv](https://docs.astral.sh/uv/) và Node.js trong `PATH`. Node.js được yt-dlp dùng khi xử lý YouTube. Ứng dụng không cần API key, Spotify, model audio hoặc notebook.
 
-Tại thư mục repository:
+Cài entrypoint vào môi trường người dùng rồi mở ứng dụng:
+
+```sh
+uv tool install .
+auralytica
+```
+
+`auralytica` chạy server tại `http://127.0.0.1:8765` và tự mở trình duyệt. Nếu đúng instance Auralytica với cùng database đã chạy, launcher chỉ mở lại trang đó. Nếu cổng thuộc process khác hoặc instance dùng database khác, launcher báo lỗi; nó không kill hoặc tái sử dụng process chưa xác minh.
+
+Khi phát triển trực tiếp trong repository:
 
 ```sh
 uv sync --locked --no-default-groups
-uv run --no-sync auralytica --help
-uv run --no-sync auralytica serve
+uv run --no-sync auralytica
 ```
 
-Mở **http://127.0.0.1:8765** bằng trình duyệt. Server không tự mở cửa sổ browser.
-
-1. Kéo folder Takeout **đã giải nén** vào vùng nhập, hoặc bấm **Chọn folder**. Cần lịch sử ở dạng `watch-history.json`; nếu có nhiều nguồn, chọn một lịch sử và music library cùng export.
-2. Xem hai bảng. Topic/library là gợi ý mạnh; ca chưa rõ và có bằng chứng loại trừ ở **Còn lại**. Mũi tên chuyển từng video; checkbox và nút chuyển dùng cho nhiều dòng. Lựa chọn lưu tự động.
-3. Nhập thư mục lưu trên máy, mặc định `~/Music/Auralytica`. Bấm **Tải toàn bộ** để tải mọi video bên Nhạc, kể cả đang ẩn bởi bộ lọc/trang. Checkbox chỉ dùng để chuyển nhóm.
-4. Theo dõi trạng thái và lỗi từng video ở bảng tải. File hoàn tất còn hợp lệ được bỏ qua. Khi không còn việc hoặc đang có lượt tải hoạt động, nút tải bị khóa.
-
-**Đóng tab hoặc Ctrl+C dừng server không dừng worker tải nền.** Dùng nút **Dừng / khôi phục** hoặc lệnh `stop`; chờ trạng thái **Đã dừng** trước khi sửa nhóm. Tiếp tục lượt cũ vẫn dùng danh sách và thư mục đã chốt của lượt đó. Muốn dùng danh sách đã sửa, tạo lượt mới bằng **Tải toàn bộ**.
-
-## Dùng CLI
+Các tùy chọn kỹ thuật của launcher:
 
 ```sh
-uv run --no-sync auralytica import '/path/to/Takeout'
-uv run --no-sync auralytica list --group music --sort watch_count
-uv run --no-sync auralytica list --group rest --search 'cover' --page 1 --page-size 50
-uv run --no-sync auralytica move VIDEO_ID_1 VIDEO_ID_2 --to music
-uv run --no-sync auralytica move VIDEO_ID_1 --to rest
-uv run --no-sync auralytica download --output ~/Music/Auralytica
-uv run --no-sync auralytica status
-uv run --no-sync auralytica stop 1
-uv run --no-sync auralytica resume 1
+auralytica --port 8766
+auralytica --database '/path/to/library.sqlite3'
+auralytica --no-browser
 ```
 
-Thay đường dẫn, VIDEO_ID và `1` bằng dữ liệu thật. `download`/`resume` trả batch ID ngay sau khi khởi động worker nền; lệnh thành công chưa có nghĩa audio đã tải xong. Xem `status [id] --page 1 --page-size 50` hoặc giao diện để biết kết quả cuối. Không truyền ID thì status ưu tiên lượt đang hoạt động, sau đó lượt mới nhất. Web hiển thị 50 lượt gần đây, CLI theo ID truy cập được lượt cũ hơn.
+Không còn các subcommand nghiệp vụ cũ như `import`, `metadata`, `download` hoặc `status`.
 
-Import tự chạy gợi ý và chỉ đối chiếu library với video có trong lịch sử. Khi nhiều nguồn, thêm `--history 'history/watch-history.json'` là đường dẫn tương đối trong folder. `classify` chạy lại gợi ý nhưng giữ sửa tay. `list` hỗ trợ `--channel`, `--reason` và `--sort`; chuyển tối đa 1.000 ID/lần. Chuyển về Còn lại không xóa file audio.
+### Mở từ menu ứng dụng Linux
 
-## Dữ liệu và khôi phục
-
-Database mặc định: `~/.local/share/auralytica/library.sqlite3`. Mọi lệnh đều nhận `--database '/path/to/library.sqlite3'`; dùng **cùng đường dẫn** cho CLI và server nếu chọn database riêng. Ví dụ:
+Sau khi `auralytica` đã được cài bằng `uv tool install`, cài desktop entry một lần:
 
 ```sh
-uv run --no-sync auralytica serve --database '/path/to/library.sqlite3' --port 8765
-uv run --no-sync auralytica status --database '/path/to/library.sqlite3'
+install -Dm644 packaging/auralytica.desktop "$HOME/.local/share/applications/auralytica.desktop"
 ```
 
-Audio lưu trong thư mục đích, tên chứa video ID. File dở nằm dưới `.auralytica/` trong thư mục đích để tiếp tục; giữ thư mục này nếu còn lượt chưa hoàn tất. Khi sao lưu, dừng worker trước và giữ cả database lẫn thư mục audio. Việc bỏ qua file dựa trên đường dẫn/kích thước đã lưu, chưa dùng checksum.
+Sau đó mở **Auralytica** từ menu ứng dụng. Desktop entry chạy launcher mà không mở terminal.
+
+## Quy trình web
+
+1. **Import:** kéo folder Takeout đã giải nén hoặc bấm **Chọn folder**. Cần `watch-history.json`; nếu có nhiều nguồn, chọn một history và music library thuộc cùng export.
+2. **Explore:** xem nhóm Nhạc và thống kê lượt xem của bạn. Mở **Còn lại** khi muốn bổ sung hoặc sửa video. Metadata, preview và apply đều chạy tại đây, có phạm vi, tiến độ và log.
+3. **Deduplicate:** quét nhóm nghi cùng bài, xem tiêu đề/kênh/evidence và bỏ chọn các video không muốn tải. Mọi bản được giữ mặc định; có thể bỏ qua bước này.
+4. **Download:** chọn thư mục lưu rồi tải toàn bộ bản được giữ, kể cả video ở trang khác hoặc đang bị bộ lọc ẩn. Trang này tách số bị loại bởi dedup, file đã có và file cần tải.
+
+Audio là stream tốt nhất truy cập được của đúng video đã chọn, giữ codec nguồn và không chuyển sang MP3. Lỗi một video không chặn video khác. Bảng tải cho phép dừng, tiếp tục và thử lại; batch cũ luôn giữ danh sách đã chốt lúc tạo.
+
+Đóng tab hoặc dừng server không tự dừng worker audio nền. Mở lại Auralytica để xem trạng thái. Nếu cần sửa Nhạc hoặc lựa chọn dedup, hãy dừng batch đang chạy trước.
+
+## Dữ liệu, log và khôi phục
+
+Database mặc định nằm tại `~/.local/share/auralytica/library.sqlite3`. Lựa chọn thủ công, metadata, dedup, batch và log quyết định cùng nằm trong database này. Explore hiển thị log metadata gần đây; Download hiển thị lỗi theo video. Ứng dụng không tự tạo file log phiên bên ngoài.
+
+Không có telemetry hoặc analytics. Import, phân loại và dedup chạy local. Trình duyệt chỉ lấy thumbnail từ `i.ytimg.com` khi hiển thị video; YouTube Music chỉ được gọi khi bạn bắt đầu lấy metadata; YouTube/yt-dlp chỉ được gọi khi bạn bắt đầu tải audio. Log lỗi không lưu exception thô, signed URL hoặc token từ provider.
+
+Audio nằm trong thư mục đích. File dở nằm dưới `.auralytica/` trong thư mục đó để hỗ trợ tiếp tục; giữ thư mục này khi còn batch chưa hoàn tất. Khi sao lưu, dừng worker rồi giữ cả database và thư mục audio. Việc nhận file đã tải dựa trên đường dẫn/kích thước đã lưu, chưa dùng checksum.
 
 | Tình huống | Cách xử lý |
 | --- | --- |
-| Thiếu `sqlite3` | Kiểm tra `uv run --no-sync python -c "import sqlite3; print(sqlite3.sqlite_version)"`. Chọn interpreter có SQLite rồi tạo lại môi trường; không dùng `pip install sqlite3`. Lỗi cũ chưa tái hiện trong kiểm chứng. |
-| Không có lịch sử JSON | Kiểm tra folder đã giải nén và export có lịch sử dạng JSON. HTML chưa hỗ trợ. |
-| Upload quá lớn | Web giới hạn request 64 MiB; dùng CLI import cho nguồn lớn hơn, rồi mở server với cùng database. |
-| Video unavailable/private/xóa | Xem lỗi riêng của video; phần khác tiếp tục. Chỉ thử lại khi video còn truy cập được. Không bảo đảm khôi phục video đã mất. |
-| Lỗi mạng hoặc xử lý YouTube | Kiểm tra mạng, `node --version` và lỗi từng video; dùng Tiếp tục để thử lại. Không tự đổi sang một bản nhạc khác. |
-| Không ghi được / đầy đĩa | Kiểm tra quyền và dung lượng thư mục đích rồi tiếp tục. Muốn đổi đích: dừng, chọn thư mục mới và tạo lượt mới. |
-| Lượt còn running sau sự cố | Dùng Dừng / khôi phục hoặc `stop ID`. Chỉ khôi phục khi worker cũ đã nhả khóa, rồi `resume ID`. |
-| Cổng đang được dùng | Thêm `--port 8766`, mở đúng địa chỉ/cổng mới. Server chỉ nghe loopback. |
+| Không có lịch sử JSON | Chọn folder Takeout đã giải nén có history dạng JSON. HTML chưa hỗ trợ. |
+| Upload vượt 63 MiB | Bản local hiện tại từ chối request lớn hơn giới hạn này; tách/chọn export nhỏ hơn trước khi nhập. |
+| Video private/xóa | Xem lỗi riêng của video; phần khác tiếp tục. Auralytica không tự đổi sang video khác. |
+| Lỗi mạng hoặc YouTube | Kiểm tra mạng và `node --version`, sau đó bấm **Tiếp tục lượt này**. |
+| Không ghi được hoặc đầy đĩa | Dừng batch, kiểm tra quyền/dung lượng, rồi tiếp tục. Tạo lượt mới nếu đổi thư mục đích. |
+| Cổng đang được dùng | Đóng process đó hoặc mở bằng `auralytica --port 8766`. Launcher không tự kill process. |
+| Thiếu `sqlite3` | Chọn Python có SQLite rồi cài lại; không cài package `sqlite3` từ pip. |
 
-## Giới hạn
+Chỉ lấy video có nội dung chính là nhạc, không trích BGM từ video nói chuyện/game. AMV, cover, OST, remix hoặc reupload không có nhãn Music có thể cần sửa tay. Alias đa ngôn ngữ chỉ được dùng khi có evidence/xác nhận; ứng dụng chưa cam kết nhận diện mọi bài hoặc báo precision/recall production.
 
-Chỉ lấy video có nội dung chính là nhạc, không trích BGM từ video nói chuyện/game. “Audio gốc” là stream tốt nhất truy cập được của video trên YouTube, không phải file master người đăng. AMV/cover/OST/remix/unofficial không có nhãn Music có thể cần chuyển tay. Chưa đo precision/recall; không tuyên bố tự nhận đủ mọi nhạc hoặc xác nhận Shorts chỉ từ duration/hashtag.
-
-Hiện hỗ trợ Linux và một export JSON đang xem; chưa hỗ trợ HTML, merge nhiều export đồng thời hoặc đóng gói Windows/macOS. Dashboard phân tích trong app nằm ngoài MVP này. [PROJECT_DASHBOARD.md](PROJECT_DASHBOARD.md) là tài liệu theo dõi phát triển.
+Hiện hỗ trợ Linux và một export JSON đang hoạt động; chưa hỗ trợ HTML, merge nhiều export, hosted SaaS hoặc đóng gói Windows/macOS.
 
 ## Kiểm thử và phát triển
 
 ```sh
-uv sync --locked --no-default-groups --group test
-uv run --no-sync python -m unittest discover -s tests -v
-
 uv sync --locked --no-default-groups --group test --group browser
-uv run --no-sync python -m playwright install chromium
+uv run --no-sync python -m unittest discover -s tests -v
 uv run --no-sync python -m unittest discover -s tests/browser -v
 ```
 
-Playwright/Chromium chỉ cần cho test. Dependencies notebook ở group `notebook`; thêm `--group notebook` khi sync nếu muốn giữ chúng. Sync có thể gỡ package không thuộc nhóm đã chọn.
-
-Để kiểm tra trong môi trường riêng, giữ `.venv` hiện tại:
-
-```sh
-UV_PROJECT_ENVIRONMENT=/tmp/auralytica-check uv sync --locked --no-default-groups --no-editable --group test
-/tmp/auralytica-check/bin/python -m unittest discover -s tests -v
-```
-
-[Hướng dẫn kiểm chứng sạch](docs/ai/testing/QUICKSTART.md) có lệnh smoke offline/một video thật. Smoke mạng chỉ chạy khi được chủ động gọi; bộ test tự động dùng dữ liệu tổng hợp.
-
-## HTTP API local
-
-`GET /api/videos` dùng group/search/channel/reason/sort/page/page_size như CLI. `POST /api/videos/move` nhận `{"video_ids":["abcdefghijk"],"to_group":"music"}`. `POST /api/imports` nhận multipart `files`: một watch-history.json và tối đa một music library songs.csv cùng export.
-
-API tải: `GET /api/downloads/preview?output_dir=...`, `GET /api/downloads`, `GET /api/downloads/{id}?page=1&page_size=20`; `POST /api/downloads` nhận `{"output_dir":"/path/to/audio"}`, `POST /api/downloads/{id}/stop` và `/resume`.
-
-POST phải có Origin khớp Host/port local, ví dụ `Origin: http://127.0.0.1:8765`. Title/kênh là dữ liệu văn bản, không render trực tiếp thành HTML. API không cần key bên ngoài và không mở CORS rộng.
+Xem [dashboard dự án](PROJECT_DASHBOARD.md), [requirements web workflow](docs/ai/requirements/2026-09-20-feature-web-workflow.md), [kịch bản nghiệm thu](docs/ai/testing/2026-09-20-feature-web-workflow.md) và [review cuối WFT09](docs/ai/testing/WFT09_FINAL_REVIEW.md).

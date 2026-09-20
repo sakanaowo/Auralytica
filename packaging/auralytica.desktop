@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Auralytica
+Comment=Import YouTube Takeout and download your music library
+Exec=auralytica
+Icon=audio-x-generic
+Terminal=false
+Categories=AudioVideo;Audio;
+StartupNotify=true

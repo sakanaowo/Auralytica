@@ -29,4 +29,16 @@ def launch(database, batch_id):
     threading.Thread(target=work, daemon=True).start()
 app = create_app(root/'state.sqlite3', port=port)
 app.state.launch_worker = launch
+
+class MetadataProvider:
+    key = 'browser-fixture:player-v1:en:VN'
+    last_http_status = 200
+
+    def fetch(self, video_id):
+        return {'videoDetails': {'videoId': video_id, 'musicVideoType': 'MUSIC_VIDEO_TYPE_OMV',
+                                 'title': 'Fixture song', 'author': 'Fixture artist'},
+                'playabilityStatus': {'status': 'OK'}}
+
+app.state.metadata_provider_factory = MetadataProvider
+app.state.launch_metadata = app.state.run_metadata_inline
 uvicorn.run(app, host='127.0.0.1', port=port, access_log=False)

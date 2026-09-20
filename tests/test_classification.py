@@ -7,6 +7,32 @@ from auralytica import classification, importer, storage
 
 
 class ClassificationTests(unittest.TestCase):
+    def test_decisions_are_append_only_and_manual_correction_links_to_decision(self):
+        from auralytica.review import move_videos
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root/'watch-history.json').write_text(json.dumps([
+                {'titleUrl':'https://youtu.be/abcdefghijk','title':'Song'}]))
+            db = storage.open_database(root/'db.sqlite3')
+            self.addCleanup(db.close)
+            importer.import_folder(db, root)
+            first = db.execute("SELECT * FROM audit_events WHERE kind='classification_decided'").fetchone()
+            self.assertIsNotNone(first, 'Import must preserve its original decision in the audit')
+            move_videos(db, ['abcdefghijk'], 'music')
+            correction = db.execute("SELECT payload_json FROM audit_events WHERE kind='review_changed'").fetchone()
+            payload = json.loads(correction[0])
+            self.assertEqual(payload['decision_id'], first['id'])
+            self.assertEqual((payload['before_group'], payload['after_group']), ('rest','music'))
+            run = classification.classify_active(db)
+            self.assertEqual(run['counts'], {'music':1,'rest':0})
+            decisions = db.execute("SELECT * FROM audit_events WHERE kind='classification_decided' ORDER BY id").fetchall()
+            self.assertEqual(len(decisions), 2)
+            self.assertEqual(decisions[0]['payload_json'], first['payload_json'])
+            latest = json.loads(decisions[1]['payload_json'])
+            self.assertEqual(latest['features']['watch_count'], 1)
+            self.assertEqual(latest['effective_group'], 'music')
+            self.assertEqual(latest['user_group'], 'music')
+
     def test_evidence_rules_and_conflicts(self):
         cases = [
             ({'channel_name':'Artist - Topic'}, 'music', 'topic_channel'),
