@@ -171,7 +171,8 @@ export interface DownloadBatchItem {
   status: 'queued' | 'running' | 'completed' | 'failed' | 'skipped' | 'cancelled';
   downloaded_bytes: number;
   total_bytes?: number;
-  error_message?: string;
+  error_code?: string | null;
+  error_message?: string | null;
 }
 
 export interface DownloadBatch {
@@ -179,12 +180,19 @@ export interface DownloadBatch {
   status: 'queued' | 'running' | 'paused' | 'completed' | 'partial' | 'failed' | 'cancelled';
   output_dir: string;
   total: number;
+  queued?: number;
+  skipped?: number;
   counts: {
     completed?: number;
     failed?: number;
     skipped?: number;
     running?: number;
+    queued?: number;
   };
+  page?: number;
+  page_size?: number;
+  filtered_total?: number;
+  filter_status?: string;
   stop_requested: boolean;
   error: string | null;
   items: DownloadBatchItem[];

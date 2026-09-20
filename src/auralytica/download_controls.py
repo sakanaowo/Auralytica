@@ -7,7 +7,7 @@ import threading
 
 from .batches import create_batch, eligible_snapshot, get_batch, pause_batch, recover_batch, resume_batch
 from .downloader import request_stop
-from .storage import BatchBusyError, get_setting, open_database, set_setting
+from .storage import BatchBusyError, get_setting, open_database, set_setting, transaction
 
 
 def preview(db, output_dir):
@@ -15,7 +15,7 @@ def preview(db, output_dir):
     return {key: value for key, value in snapshot.items() if not key.startswith('_')}
 
 
-def batch_status(db, batch_id=None, *, page=1, page_size=50):
+def batch_status(db, batch_id=None, *, page=1, page_size=50, status=None):
     if page < 1 or not 1 <= page_size <= 1000:
         raise ValueError('Phân trang không hợp lệ.')
     if batch_id is None:
@@ -24,11 +24,26 @@ def batch_status(db, batch_id=None, *, page=1, page_size=50):
             return None
         batch_id = row[0]
     batch = get_batch(db, batch_id)
-    items = [dict(row) for row in db.execute(
-        "SELECT d.*,v.title FROM download_items d JOIN videos v ON v.id=d.video_id WHERE batch_id=? "
-        "ORDER BY CASE d.status WHEN 'running' THEN 0 WHEN 'failed' THEN 1 ELSE 2 END,d.video_id LIMIT ? OFFSET ?",
-        (batch_id, page_size, (page-1)*page_size))]
+
+    where_conditions = ['d.batch_id=?']
+    params = [batch_id]
+    if status and status != 'all':
+        if status == 'completed':
+            where_conditions.append("d.status IN ('completed', 'skipped')")
+        else:
+            where_conditions.append("d.status = ?")
+            params.append(status)
+
+    where_clause = ' WHERE ' + ' AND '.join(where_conditions)
+    filtered_total = db.execute(f'SELECT COUNT(*) FROM download_items d {where_clause}', params).fetchone()[0]
+
+    query = (
+        f'SELECT d.*,v.title FROM download_items d JOIN videos v ON v.id=d.video_id {where_clause} '
+        "ORDER BY CASE d.status WHEN 'running' THEN 0 WHEN 'failed' THEN 1 ELSE 2 END,d.video_id LIMIT ? OFFSET ?"
+    )
+    items = [dict(row) for row in db.execute(query, (*params, page_size, (page-1)*page_size))]
     return dict(batch, items=items, page=page, page_size=page_size,
+                filtered_total=filtered_total, filter_status=status or 'all',
                 error=get_setting(db, f'batch_error:{batch_id}'),
                 stop_requested=get_setting(db, 'stop_requested_batch') == str(batch_id))
 
@@ -72,3 +87,36 @@ def stop_download(db, batch_id):
         except BatchBusyError:
             pass
     return request_stop(db, batch_id)
+
+
+def retry_failed(db, database, batch_id, launcher=launch_worker):
+    batch = get_batch(db, batch_id)
+    if batch['status'] == 'running':
+        raise BatchBusyError('Worker đang tải; hãy tạm dừng trước khi thử lại bài lỗi.')
+    with transaction(db):
+        db.execute("UPDATE download_items SET status='queued',error_code=NULL,error_message=NULL WHERE batch_id=? AND status='failed'", (batch_id,))
+        pending = db.execute("SELECT 1 FROM download_items WHERE batch_id=? AND status='queued' LIMIT 1", (batch_id,)).fetchone()
+        if pending:
+            db.execute("UPDATE download_batches SET status='queued',finished_at=NULL WHERE id=?", (batch_id,))
+            set_setting(db, 'stop_requested_batch', '')
+            set_setting(db, f'batch_error:{batch_id}', '')
+    batch = get_batch(db, batch_id)
+    if batch['status'] == 'queued':
+        launcher(database, batch_id)
+    return batch
+
+
+def retry_item(db, database, batch_id, video_id, launcher=launch_worker):
+    batch = get_batch(db, batch_id)
+    if batch['status'] == 'running':
+        raise BatchBusyError('Worker đang tải; hãy tạm dừng trước khi thử lại bài lỗi.')
+    with transaction(db):
+        db.execute("UPDATE download_items SET status='queued',error_code=NULL,error_message=NULL WHERE batch_id=? AND video_id=?", (batch_id, video_id))
+        db.execute("UPDATE download_batches SET status='queued',finished_at=NULL WHERE id=?", (batch_id,))
+        set_setting(db, 'stop_requested_batch', '')
+        set_setting(db, f'batch_error:{batch_id}', '')
+    batch = get_batch(db, batch_id)
+    if batch['status'] == 'queued':
+        launcher(database, batch_id)
+    return batch
+

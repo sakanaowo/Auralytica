@@ -144,3 +144,53 @@ class DownloadControlTests(unittest.TestCase):
         with open_database(self.database) as db:
             db.execute("UPDATE download_batches SET status='running' WHERE id=?", (batch,))
         self.assertEqual(self.post(f'/api/downloads/{batch}/stop').json()['status'], 'paused')
+
+    def test_retry_failed_and_retry_single_item_and_status_filter(self):
+        response = self.start()
+        self.assertEqual(response.status_code, 200, response.text)
+        batch = response.json()['batch_id']
+        with open_database(self.database) as db:
+            db.execute("UPDATE download_items SET status='failed',error_code='unavailable',error_message='Video không khả dụng' WHERE batch_id=? AND video_id='00000000000'", (batch,))
+            db.execute("UPDATE download_items SET status='completed',file_path='/tmp/0.webm',file_size=10 WHERE batch_id=? AND video_id='00000000001'", (batch,))
+            db.execute("UPDATE download_batches SET status='partial' WHERE id=?", (batch,))
+
+        # Filter by failed status
+        failed_res = self.client.get(f'/api/downloads/{batch}?status=failed')
+        self.assertEqual(failed_res.status_code, 200)
+        failed_data = failed_res.json()
+        self.assertEqual(len(failed_data['items']), 1)
+        self.assertEqual(failed_data['filtered_total'], 1)
+        self.assertEqual(failed_data['items'][0]['video_id'], '00000000000')
+        self.assertEqual(failed_data['items'][0]['error_code'], 'unavailable')
+
+        # Filter by completed status
+        completed_res = self.client.get(f'/api/downloads/{batch}?status=completed')
+        self.assertEqual(completed_res.status_code, 200)
+        self.assertEqual(completed_res.json()['filtered_total'], 1)
+
+        # Retry single item
+        self.app.state.launch_worker.reset_mock()
+        retry_item_res = self.post(f'/api/downloads/{batch}/items/00000000000/retry')
+        self.assertEqual(retry_item_res.status_code, 200)
+        self.assertEqual(retry_item_res.json()['status'], 'queued')
+        self.app.state.launch_worker.assert_called_once()
+        with open_database(self.database) as db:
+            item = db.execute("SELECT status,error_code FROM download_items WHERE batch_id=? AND video_id='00000000000'", (batch,)).fetchone()
+            self.assertEqual(item['status'], 'queued')
+            self.assertIsNone(item['error_code'])
+
+        # Set back to failed and test retry-failed
+        with open_database(self.database) as db:
+            db.execute("UPDATE download_items SET status='failed',error_code='bot_blocked',error_message='Bot blocked' WHERE batch_id=? AND video_id='00000000000'", (batch,))
+            db.execute("UPDATE download_batches SET status='partial' WHERE id=?", (batch,))
+
+        self.app.state.launch_worker.reset_mock()
+        retry_all_res = self.post(f'/api/downloads/{batch}/retry-failed')
+        self.assertEqual(retry_all_res.status_code, 200)
+        self.assertEqual(retry_all_res.json()['status'], 'queued')
+        self.app.state.launch_worker.assert_called_once()
+        with open_database(self.database) as db:
+            item = db.execute("SELECT status,error_code FROM download_items WHERE batch_id=? AND video_id='00000000000'", (batch,)).fetchone()
+            self.assertEqual(item['status'], 'queued')
+            self.assertIsNone(item['error_code'])
+

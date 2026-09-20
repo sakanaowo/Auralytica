@@ -392,10 +392,22 @@ def create_app(database: str | Path, *, port=8765, max_body_bytes=64 * 1024 * 10
             return downloads.list_batches(db)
 
     @app.get('/api/downloads/{batch_id}')
-    def download_status(batch_id: int, page: Annotated[int, Query(ge=1)] = 1,
+    def download_status(batch_id: int,
+                        status: Annotated[str | None, Query(pattern=r'^(all|queued|running|completed|failed|skipped)$')] = None,
+                        page: Annotated[int, Query(ge=1)] = 1,
                         page_size: Annotated[int, Query(ge=1, le=1000)] = 50):
         with closing(open_database(database)) as db:
-            return downloads.batch_status(db, batch_id, page=page, page_size=page_size)
+            return downloads.batch_status(db, batch_id, page=page, page_size=page_size, status=status)
+
+    @app.post('/api/downloads/{batch_id}/retry-failed')
+    def download_retry_failed(batch_id: int):
+        with closing(open_database(database)) as db:
+            return downloads.retry_failed(db, database, batch_id=batch_id, launcher=app.state.launch_worker)
+
+    @app.post('/api/downloads/{batch_id}/items/{video_id}/retry')
+    def download_retry_item(batch_id: int, video_id: VideoID):
+        with closing(open_database(database)) as db:
+            return downloads.retry_item(db, database, batch_id=batch_id, video_id=video_id, launcher=app.state.launch_worker)
 
     @app.post('/api/downloads')
     def download_start(payload: DownloadRequest):

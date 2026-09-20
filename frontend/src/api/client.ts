@@ -143,8 +143,19 @@ export const api = {
 
   getDownloads: () => request<{ batches: DownloadBatch[] }>('/api/downloads'),
 
-  getDownloadBatch: (batchId: number, page = 1, pageSize = 20) =>
-    request<DownloadBatch>(`/api/downloads/${batchId}?page=${page}&page_size=${pageSize}`),
+  getDownloadBatch: (batchId: number, page = 1, pageSize = 20, status?: string) => {
+    const sp = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (status && status !== 'all') {
+      sp.set('status', status);
+    }
+    return request<DownloadBatch>(`/api/downloads/${batchId}?${sp.toString()}`);
+  },
+
+  retryFailedDownloads: (batchId: number) =>
+    request<DownloadBatch>(`/api/downloads/${batchId}/retry-failed`, { method: 'POST' }),
+
+  retryDownloadItem: (batchId: number, videoId: string) =>
+    request<DownloadBatch>(`/api/downloads/${batchId}/items/${videoId}/retry`, { method: 'POST' }),
 
   startDownload: (outputDir: string, previewToken: string) =>
     request<DownloadBatch>('/api/downloads', {
