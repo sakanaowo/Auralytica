@@ -6,6 +6,8 @@ description: Kết quả T01–T12, CLI/web local, tải audio và giới hạn 
 
 # Auralytica — Implementation
 
+> Tài liệu này giữ lịch sử MVP/CLI cũ. Entry point hiện hành là launcher web-only `auralytica`; xem [implementation web workflow](2026-09-20-feature-web-workflow.md). Các subcommand nghiệp vụ trong các mốc lịch sử bên dưới không còn khả dụng.
+
 Cập nhật 2026-09-11: **T01–T12 hoàn tất; FE02 collector/cache/audit đã triển khai**. [Metadata hiện hành](METADATA.md) mô tả schema v2, CLI và giới hạn. [Quickstart sạch](../testing/QUICKSTART.md) và [nghiệm thu chức năng](../testing/ACCEPTANCE.md) ghi bằng chứng MVP trước FE02; các mục T01–T12 dưới đây là lịch sử từng bước.
 
 ## Development Setup

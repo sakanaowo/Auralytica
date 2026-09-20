@@ -62,19 +62,6 @@ class PreviewTests(unittest.TestCase):
         self.log.write_text('\n'.join(json.dumps(r) for r in records))
         with self.assertRaises(ValueError):self.preview(self.db,self.labels,self.log)
 
-    def test_cli_preview_uses_read_only_database_and_refuses_overwrite(self):
-        import subprocess,sys
-        out=self.root/'preview.json'
-        args=[str(Path(sys.executable).parent/'auralytica'),'classification-preview','--database',str(self.path),
-              '--labels',str(self.labels),'--metadata-log',str(self.log),'--output',str(out)]
-        before=list(self.db.iterdump())
-        run=subprocess.run(args,capture_output=True,text=True)
-        self.assertEqual(run.returncode,0,run.stderr)
-        self.assertEqual(json.loads(out.read_text())['proposed_totals']['music'],3)
-        self.assertEqual(before,list(self.db.iterdump()))
-        run=subprocess.run(args,capture_output=True,text=True)
-        self.assertNotEqual(run.returncode,0)
-
     def test_repeat_is_distinct_days_and_unresolved_review_blocks_promotion(self):
         self.db.execute("UPDATE watch_events SET watched_at='2026-09-01T00:00:00Z' WHERE video_id='00000000006'")
         with self.labels.open('a') as f:f.write('00000000004,hash,uncertain,need review\n')
@@ -116,16 +103,4 @@ class PreviewTests(unittest.TestCase):
         before=list(self.db.iterdump())
         with patch.object(module,'record_event',side_effect=RuntimeError('audit failed')):
             with self.assertRaises(RuntimeError):module.apply_preview(self.db,plan,self.labels,self.log)
-        self.assertEqual(before,list(self.db.iterdump()))
-
-    def test_cli_applies_verified_plan_once(self):
-        import subprocess,sys
-        plan=self.root/'plan.json';plan.write_text(json.dumps(self.preview(self.db,self.labels,self.log)))
-        args=[str(Path(sys.executable).parent/'auralytica'),'classification-apply','--preview',str(plan),
-              '--database',str(self.path),'--labels',str(self.labels),'--metadata-log',str(self.log)]
-        result=subprocess.run(args,capture_output=True,text=True)
-        self.assertEqual(result.returncode,0,result.stderr)
-        self.assertEqual(json.loads(result.stdout)['changed'],3)
-        before=list(self.db.iterdump())
-        self.assertNotEqual(subprocess.run(args,capture_output=True).returncode,0)
         self.assertEqual(before,list(self.db.iterdump()))

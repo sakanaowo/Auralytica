@@ -13,7 +13,7 @@ Cập nhật: **2026-09-20 · WFT01–WFT09 done trong worktree feature-web-work
 | [Requirements hiện hành](docs/ai/requirements/README.md) | Nguồn phạm vi và tiêu chí nghiệm thu MVP |
 | [Thiết kế MVP](docs/ai/design/README.md) | Bốn phần đã chốt: luồng sử dụng, dữ liệu chung, thành phần, lỗi/khôi phục |
 | [Kế hoạch triển khai](docs/ai/planning/README.md) | T01–T12, bốn mốc, phụ thuộc và điều kiện hoàn thành |
-| [Kế hoạch kiểm chứng](.worktrees/feature-web-workflow/docs/ai/testing/2026-09-20-feature-web-workflow.md) | WFT02–WFT09 đạt: 116 core/API + 10 Chromium tests và review cuối |
+| [Kế hoạch kiểm chứng](docs/ai/testing/2026-09-20-feature-web-workflow.md) | WFT02–WFT09 đạt: 116 core/API + 10 Chromium tests và review cuối |
 | [Notebook 01](notebooks/01_takeout_eda.ipynb) · [kết quả local](artifacts/notebook-runs/01_takeout_eda.executed.ipynb) | EDA và khảo sát tín hiệu, chưa phải bộ phân loại production |
 | [Notebook 02](notebooks/02_classification_design.ipynb) · [kết quả local](artifacts/notebook-runs/02_classification_design.executed.ipynb) | Thử loại trừ và audit sample; phần matching Spotify đã bị bỏ khỏi phạm vi |
 | [Notebook 04](notebooks/04_ytmusic_metadata_audit.ipynb) · [báo cáo YouTube Music](docs/references/youtube-music-identification.md) | So metadata player/queue trên 18 mẫu, log cụ thể và hướng nhận diện nhiều tầng |
@@ -73,7 +73,7 @@ Lưu ý: 1.687 là kết quả gồm nhãn kênh người dùng và proxy hashta
 
 ## Trạng thái hiện tại và bước sử dụng
 
-M1–M4, T01–T12 và WFT01–WFT09 đã hoàn tất trong worktree. Chạy ứng dụng từ worktree bằng `uv run --no-sync auralytica`, mở http://127.0.0.1:8765, rồi đi theo Import → Explore → Deduplicate → Download. Xem [README hiện hành](.worktrees/feature-web-workflow/README.md) trước.
+M1–M4, T01–T12 và WFT01–WFT09 đã hoàn tất. Chạy `uv run --no-sync auralytica`, mở http://127.0.0.1:8765, rồi đi theo Import → Explore → Deduplicate → Download. Máy mới làm theo [README](README.md) trước.
 
 Cải tiến tiếp theo nên dựa trên video bị nhận nhầm/bỏ sót hoặc lỗi tải khi dùng thực tế. Dashboard phân tích trong app, HTML và đa nền tảng chưa thuộc phần đã hoàn thành; không tự mở rộng phạm vi từ kết quả MVP.
 
@@ -87,7 +87,7 @@ Các mốc ở cuối tài liệu là lịch sử tại từng thời điểm; t
 | Nhạc thiếu từ khóa, kênh nhiều loại nội dung | Giữ hàng chờ và sửa cấp video; xem lại nhiều chỉ tăng ưu tiên. |
 | Video xóa/private/tải lỗi | Hiện trạng thái và cho thử lại; không mất các file tải thành công. |
 | JSON/HTML và đa nền tảng | Đã chọn JSON Unicode và Linux desktop trước; HTML, merge nhiều export và đóng gói nền tảng khác để sau. |
-| Chất lượng gợi ý tự động | Fixture độc lập nhỏ đạt precision/recall 0,80/0,80; chưa phải accuracy production. Xem [review WFT09](.worktrees/feature-web-workflow/docs/ai/testing/WFT09_FINAL_REVIEW.md). |
+| Chất lượng gợi ý tự động | Fixture độc lập nhỏ đạt precision/recall 0,80/0,80; chưa phải accuracy production. Xem [review WFT09](docs/ai/testing/WFT09_FINAL_REVIEW.md). |
 
 ## Quy tắc cập nhật dashboard
 
@@ -112,7 +112,7 @@ Các mốc ở cuối tài liệu là lịch sử tại từng thời điểm; t
 
 Giao diện hai bảng đã dùng được: folder picker, drag/drop thật trên Chromium, chọn nguồn khi có nhiều lịch sử, ảnh lỗi có placeholder, Unicode search, lọc lý do/sort/page, chuyển từng dòng/hàng loạt và reload giữ sửa tay. Checkbox chỉ chuyển; đổi filter/page xóa tick. **41 test core/API + 4 test Chromium đạt**. Fixture 6.400 video import/filter/move trong 1,39 giây (một lần chạy local, không phải cam kết hiệu năng).
 
-[Ảnh UI với dữ liệu tổng hợp](artifacts/browser-runs/t07-ui.png). Wheel có đủ HTML/CSS/JS. Mốc này từng dùng subcommand `serve`; lệnh hiện hành là `uv run --no-sync auralytica` theo README trong worktree.
+[Ảnh UI với dữ liệu tổng hợp](artifacts/browser-runs/t07-ui.png). Wheel có đủ HTML/CSS/JS. Mốc này từng dùng subcommand `serve`; lệnh hiện hành là `uv run --no-sync auralytica` theo README.
 
 ## Mốc T08 — 2026-09-10
 
@@ -271,8 +271,6 @@ Code mới ở `.worktrees/feature-web-workflow` trên branch `feature-web-workf
 
 **92 core/API + 7 Chromium tests đạt**, gồm giữ batch cũ khi Nhạc trống, stop/resume/retry/restart/reimport. Đã kiểm tra giao diện 390px; không dùng live DB hoặc tải audio thật. WFT01–WFT02 done; **tiếp theo WFT03: Explore music-first + thống kê**, rồi WFT04 metadata web, WFT05–WFT07 dedup/tải. CLI chỉ gỡ ở WFT08 sau web parity. Không commit/push.
 
-[Tài liệu triển khai và tiến độ mới nhất trong worktree](.worktrees/feature-web-workflow/docs/ai/planning/2026-09-20-feature-web-workflow.md).
-
 
 ## Web workflow — WFT03 đã triển khai (2026-09-20)
 
@@ -300,6 +298,6 @@ Download dùng đúng tập Nhạc được giữ sau Deduplicate, độc lập 
 
 ## Web workflow — WFT09 nghiệm thu xong (2026-09-20)
 
-[Review cuối](.worktrees/feature-web-workflow/docs/ai/testing/WFT09_FINAL_REVIEW.md) đạt: **116 core/API + 10 Chromium + 7 research + 2 research-browser tests**; wheel, lint, JS, bytecode và diff checks đều đạt. Database copy giữ manual label/download/selection; code schema cũ từ chối schema mới mà không ghi. Fixture 7.500 video đạt benchmark phân trang; bộ nhãn độc lập 16 video cho precision/recall 0,80/0,80 trong phạm vi gợi ý tổng hợp, không phải accuracy production.
+[Review cuối](docs/ai/testing/WFT09_FINAL_REVIEW.md) đạt: **116 core/API + 10 Chromium + 7 research + 2 research-browser tests**; wheel, lint, JS, bytecode và diff checks đều đạt. Database copy giữ manual label/download/selection; code schema cũ từ chối schema mới mà không ghi. Fixture 7.500 video đạt benchmark phân trang; bộ nhãn độc lập 16 video cho precision/recall 0,80/0,80 trong phạm vi gợi ý tổng hợp, không phải accuracy production.
 
 Security review sửa log yt-dlp để không lưu exception thô, signed URL hoặc token. Không có finding chặn; không commit/push và không sửa live database.

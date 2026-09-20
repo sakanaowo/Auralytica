@@ -9,7 +9,7 @@ import re
 import time
 
 from .audit import finish_run, record_event, start_run
-from .storage import get_setting, transaction
+from .storage import assert_review_unlocked, get_setting, transaction
 
 VERSION = 'metadata-v1'
 
@@ -67,6 +67,7 @@ def create_run(db, *, provider_key, video_ids=None, limit=50, max_attempts=3,
             not all(isinstance(v, str) and re.fullmatch(r'[A-Za-z0-9_-]{11}', v) for v in video_ids)):
         raise ValueError('Cần danh sách video ID hợp lệ.')
     with transaction(db):
+        assert_review_unlocked(db)
         active = get_setting(db, 'active_import')
         if active is None:
             raise ValueError('Hãy import Takeout trước.')
@@ -92,6 +93,33 @@ def get_run(db, run_id):
     counts = dict(db.execute('SELECT status,COUNT(*) FROM metadata_items WHERE run_id=? GROUP BY status', (run_id,)))
     return dict(run_id=run_id, status=row['status'], import_id=row['import_id'], source_hash=row['source_hash'],
                 config=json.loads(row['config_json']), total=sum(counts.values()), counts=counts)
+
+
+def list_runs(db, limit=20):
+    rows = db.execute("SELECT id FROM audit_runs WHERE kind='metadata' ORDER BY created_at DESC,id DESC LIMIT ?",
+                      (limit,)).fetchall()
+    return [get_run(db, row['id']) for row in rows]
+
+
+def request_stop(db, run_id):
+    with transaction(db):
+        run = get_run(db, run_id)
+        if run['status'] in {'pending', 'running'}:
+            db.execute("UPDATE audit_runs SET status='stop_requested' WHERE id=?", (run_id,))
+            record_event(db, 'run_stop_requested', {}, run_id=run_id)
+    return get_run(db, run_id)
+
+
+def recover_interrupted(db):
+    """A newly created web app has no collector threads from the previous process."""
+    with transaction(db):
+        rows = db.execute("SELECT id,status FROM audit_runs WHERE kind='metadata' "
+                          "AND status IN ('pending','running','stop_requested')").fetchall()
+        for row in rows:
+            db.execute("UPDATE audit_runs SET status='paused',finished_at=CURRENT_TIMESTAMP WHERE id=?",
+                       (row['id'],))
+            record_event(db, 'run_recovered', {'previous_status': row['status']}, run_id=row['id'])
+    return len(rows)
 
 
 def normalize(video_id, response):
@@ -154,12 +182,20 @@ def collect_run(db, run_id, provider, *, sleep=time.sleep):
             raise ValueError('Provider/version/config khác lượt gốc; tạo lượt mới để giữ nguồn cache chính xác.')
         if run['status'] == 'completed':
             return run
+        if run['status'] == 'stop_requested':
+            with transaction(db):
+                finish_run(db, run_id, 'paused', counts=run['counts'])
+            return get_run(db, run_id)
         with transaction(db):
             db.execute("UPDATE audit_runs SET status='running',finished_at=NULL WHERE id=?", (run_id,))
             record_event(db, 'run_resumed', {'previous_status':run['status']}, run_id=run_id)
         try:
             items = db.execute("SELECT video_id FROM metadata_items WHERE run_id=? AND status!='done' ORDER BY position", (run_id,)).fetchall()
             for item in items:
+                if db.execute('SELECT status FROM audit_runs WHERE id=?', (run_id,)).fetchone()[0] == 'stop_requested':
+                    with transaction(db):
+                        finish_run(db, run_id, 'paused', counts=get_run(db, run_id)['counts'])
+                    return get_run(db, run_id)
                 video_id = item['video_id']
                 cached = db.execute('SELECT * FROM metadata_cache WHERE provider_key=? AND video_id=?',
                                     (provider.key, video_id)).fetchone()

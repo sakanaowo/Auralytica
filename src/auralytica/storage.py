@@ -1,4 +1,4 @@
-"""Shared local storage for CLI and web services."""
+"""Shared local storage for web services and background workers."""
 
 from contextlib import contextmanager
 from pathlib import Path
@@ -6,11 +6,15 @@ import sqlite3
 from collections.abc import Iterator
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 
 
 class BatchBusyError(ValueError):
     """A queued/running batch owns the current review state."""
+
+
+class RevisionConflict(ValueError):
+    """A persisted snapshot no longer matches the current library."""
 
 
 def assert_review_unlocked(db):
@@ -123,6 +127,67 @@ CREATE TABLE metadata_cache (
 );
 """
 
+_SCHEMA_V3 = """
+CREATE TABLE classification_previews (
+    id TEXT PRIMARY KEY,
+    import_id INTEGER NOT NULL REFERENCES imports(id),
+    state_hash TEXT NOT NULL,
+    plan_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ready' CHECK(status IN ('ready','applied','stale')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    applied_at TEXT
+);
+CREATE INDEX classification_previews_import ON classification_previews(import_id, created_at);
+"""
+
+_SCHEMA_V4 = """
+CREATE TABLE song_aliases (
+    id INTEGER PRIMARY KEY,
+    song_key TEXT NOT NULL,
+    alias TEXT NOT NULL,
+    normalized_alias TEXT NOT NULL,
+    artist_scope TEXT,
+    source TEXT NOT NULL,
+    confirmed INTEGER NOT NULL DEFAULT 1 CHECK(confirmed IN (0,1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX song_aliases_lookup ON song_aliases(normalized_alias, confirmed);
+CREATE TABLE dedup_runs (
+    id TEXT PRIMARY KEY,
+    import_id INTEGER NOT NULL REFERENCES imports(id),
+    input_hash TEXT NOT NULL,
+    algorithm_version TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'completed',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE dedup_groups (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES dedup_runs(id),
+    fingerprint TEXT NOT NULL,
+    title_key TEXT NOT NULL,
+    evidence_type TEXT NOT NULL,
+    artist_conflict INTEGER NOT NULL DEFAULT 0 CHECK(artist_conflict IN (0,1))
+);
+CREATE INDEX dedup_groups_run ON dedup_groups(run_id, id);
+CREATE TABLE dedup_members (
+    group_id TEXT NOT NULL REFERENCES dedup_groups(id),
+    video_id TEXT NOT NULL REFERENCES videos(id),
+    evidence_json TEXT NOT NULL,
+    version_marker TEXT,
+    PRIMARY KEY(group_id, video_id)
+);
+CREATE TABLE download_selections (
+    video_id TEXT PRIMARY KEY REFERENCES videos(id),
+    keep INTEGER NOT NULL CHECK(keep IN (0,1)),
+    revision INTEGER NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE rejected_groups (
+    fingerprint TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 
 @contextmanager
 def transaction(db: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
@@ -166,6 +231,16 @@ def open_database(path: str | Path) -> sqlite3.Connection:
                     if statement.strip():
                         db.execute(statement)
                 db.execute("PRAGMA user_version=2")
+            if version < 3:
+                for statement in _SCHEMA_V3.split(';'):
+                    if statement.strip():
+                        db.execute(statement)
+                db.execute("PRAGMA user_version=3")
+            if version < 4:
+                for statement in _SCHEMA_V4.split(';'):
+                    if statement.strip():
+                        db.execute(statement)
+                db.execute("PRAGMA user_version=4")
         return db
     except BaseException:
         db.close()

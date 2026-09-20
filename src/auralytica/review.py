@@ -1,4 +1,4 @@
-"""Shared review operations for CLI and local web."""
+"""Review operations used by the local web application."""
 
 import json
 
@@ -45,7 +45,7 @@ def list_videos(db, *, group='music', search='', channel=None, reason=None,
     query = search.casefold().strip()
     filtered = [row for row in items if row['group'] == group
                 and (not query or query in (row['title'] + ' ' + (row['channel_name'] or '')).casefold())
-                and (channel is None or row['channel_key'] == channel)
+                and (channel is None or row['channel_key'] == channel or row['channel_name'] == channel)
                 and (reason is None or row['reason'] == reason)]
     if sort == 'watch_count':
         filtered.sort(key=lambda row: (-row['watch_count'], row['id']))

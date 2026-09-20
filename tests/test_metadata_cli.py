@@ -1,18 +1,14 @@
-from contextlib import redirect_stdout, redirect_stderr
-import io
 import json
 from pathlib import Path
-import sys
 import tempfile
 import unittest
-from unittest.mock import patch
 
-from auralytica import main, importer, storage
+from auralytica import importer, storage
 from auralytica import metadata, audit
 
 
-class MetadataCliTests(unittest.TestCase):
-    def test_cli_collect_status_and_export_cache_dependencies(self):
+class MetadataServiceTests(unittest.TestCase):
+    def test_collect_status_and_export_cache_dependencies(self):
         class Fake:
             key = 'cli-fixture-v1'
             last_http_status = 200
@@ -27,20 +23,15 @@ class MetadataCliTests(unittest.TestCase):
             db = storage.open_database(path)
             self.addCleanup(db.close)
             importer.import_folder(db, root)
-            def invoke(*args):
-                output = io.StringIO()
-                with patch.object(sys, 'argv', ['auralytica',*args,'--database',str(path)]), redirect_stdout(output), redirect_stderr(io.StringIO()):
-                    main()
-                return json.loads(output.getvalue())
-            # The missing CLI must fail at parsing, before any network adapter is constructed.
-            with patch.object(metadata, 'YTMusicProvider', return_value=Fake(), create=True):
-                first = invoke('metadata','collect','--video-id','aaaaaaaaaaa')
-                second = invoke('metadata','collect','--video-id','aaaaaaaaaaa')
-                status = invoke('metadata','status',second['run_id'])
-                self.assertEqual(status['status'], 'completed')
-                self.assertEqual(Fake.calls, ['aaaaaaaaaaa'])
+            provider = Fake()
+            first_id = metadata.create_run(db, provider_key=provider.key, video_ids=['aaaaaaaaaaa'])
+            first = metadata.collect_run(db, first_id, provider, sleep=lambda _: None)
+            second_id = metadata.create_run(db, provider_key=provider.key, video_ids=['aaaaaaaaaaa'])
+            second = metadata.collect_run(db, second_id, provider, sleep=lambda _: None)
+            self.assertEqual(metadata.get_run(db, second_id)['status'], 'completed')
+            self.assertEqual(Fake.calls, ['aaaaaaaaaaa'])
             output = root/'audit.jsonl'
-            exported = invoke('audit','--run-id',second['run_id'],'--output',str(output))
+            exported = audit.export_events(db, output, run_id=second['run_id'])
             records = [json.loads(s) for s in output.read_text().splitlines()]
             self.assertGreater(exported['records'], 0)
             self.assertTrue(any(r.get('kind')=='metadata_observed' and r.get('dependency') for r in records))
@@ -67,4 +58,3 @@ class MetadataCliTests(unittest.TestCase):
         with self.assertRaises(Exception) as caught:
             provider.fetch('aaaaaaaaaaa')
         self.assertFalse(caught.exception.retryable)
-

@@ -79,8 +79,6 @@ def classify_import(db, import_id):
     source_hash = db.execute('SELECT source_hash FROM imports WHERE id=?',(import_id,)).fetchone()[0]
     for row in rows:
         metadata = json.loads(row['metadata_json'])
-        if metadata.get('applied_music_evidence',{}).get('source_hash') != source_hash:
-            metadata.pop('applied_music_evidence',None)
         result = suggest(title=row['title'], channel_name=row['channel_name'],
                          metadata=metadata, watch_count=row['watch_count'], watch_days=row['watch_days'],
                          channel_decision=channels.get(row['channel_key']))

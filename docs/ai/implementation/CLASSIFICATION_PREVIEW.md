@@ -1,15 +1,8 @@
 # FE04 — Preview phân loại từ dữ liệu local
 
-Cập nhật 2026-09-18: **đã có preview và apply CLI; đã áp dụng 18 thay đổi vào live DB**. Các phần kết quả preview bên dưới là trạng thái trước apply; xem mục Áp dụng cuối tài liệu. `classification-preview` mở SQLite `mode=ro` và đọc trong một transaction; không migrate schema, không gọi mạng, không sửa review/download/audit.
+Cập nhật 2026-09-20: preview/apply hiện thao tác trên trang **Explore** sau khi metadata đã được lưu; các subcommand CSV/JSONL cũ đã được gỡ khỏi launcher web-only. Phần dưới ghi lại phương pháp và lần áp dụng 18 thay đổi trước đây; không phải hướng dẫn chạy lệnh hiện hành.
 
-```sh
-uv run --no-sync auralytica classification-preview \
-  --labels artifacts/notebook-runs/05_residual/20260918T120720595779Z/cumulative_review_labels.csv \
-  --metadata-log artifacts/metadata-smoke/fe03-20260913T082334Z/combined70.jsonl \
-  --output artifacts/my-classification-preview.json
-```
-
-Output cần là file chưa tồn tại. Có thể truyền `--database` để dùng DB khác. Runtime dùng thư viện chuẩn, không cần pandas/notebook. CSV cần video_id/source_hash/manual_label; chấp nhận notes. Từ chối ID trùng/ngoài active import, snapshot sai và nhãn không hợp lệ. Các run_manifest trong JSONL phải khớp source hash. Chỉ xét observation trực tiếp get_song.videoDetails.musicVideoType với requested_id/returned_id đúng video; lấy observation mới nhất theo fetched_at. Không lấy type từ queue. Đây là preview dựa trên observation đã lưu, không khẳng định metadata còn mới hoặc video tải được; không tự refresh/áp TTL cache.
+Preview server-side đọc observation trong SQLite, không gọi mạng và không sửa nhóm. Người dùng xem số thay đổi, video, nhóm hiện tại/đề xuất và lý do rồi bấm **Áp dụng preview**. Apply chỉ nhận preview ID do server lưu, kiểm tra snapshot hiện tại, khóa batch và ghi audit trong transaction.
 
 ## Thứ tự quyết định
 
@@ -41,14 +34,7 @@ Kiểm chứng cuối cùng: `.venv/bin/python -m unittest discover -s tests -q`
 
 ## Áp dụng đã triển khai và chạy thành công
 
-```sh
-uv run --no-sync auralytica classification-apply \
-  --preview artifacts/filter-audits/fe04-apply-preview-v2.json \
-  --labels artifacts/notebook-runs/05_residual/20260918T120720595779Z/cumulative_review_labels.csv \
-  --metadata-log artifacts/metadata-smoke/fe03-20260913T082334Z/combined70.jsonl
-```
-
-Lệnh này đã chạy; không cần chạy lại trên preview cũ. Preview v2 có state_sha256 của video/sự kiện/kênh thuộc active import. Apply mở BEGIN IMMEDIATE, chặn batch queued/running, tính lại toàn bộ preview từ input và từ chối khi nội dung/snapshot/hash/version khác. Preview v1 cần tạo lại. Lỗi bất kỳ, kể cả ghi audit, rollback toàn bộ. Chạy lại cùng preview sau khi dữ liệu đã đổi bị từ chối.
+Lần apply lịch sử này đã chạy; không cần chạy lại trên preview cũ. Luồng web hiện hành tạo preview mới trong database. Apply mở BEGIN IMMEDIATE, chặn batch queued/running, tính lại state và từ chối khi snapshot/hash/version khác. Lỗi bất kỳ, kể cả ghi audit, rollback toàn bộ; áp dụng lại preview cũ sau khi dữ liệu đổi bị từ chối.
 
 16 nhãn đã xác nhận được lưu thành user_group bằng review service; hai đề xuất metadata được lưu vào auto_group cùng evidence đã kiểm tra và source hash trong metadata_json. `rules-v2-applied-metadata` đọc evidence đã áp dụng để giữ kết quả qua classify/reimport cùng source; source khác không dùng lại evidence đó. Sửa tay luôn ưu tiên. Không lưu suy đoán tự động thành nhãn người dùng. Giao diện có tên lý do metadata mạnh/UGC recurrence.
 

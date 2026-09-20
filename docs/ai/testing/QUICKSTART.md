@@ -1,5 +1,7 @@
 # T12 — Kiểm chứng cài đặt và hướng dẫn chạy
 
+> Báo cáo này là bằng chứng lịch sử ngày 2026-09-10. Quickstart hiện hành dùng launcher web-only và nằm trong [README dự án](../../../README.md); các subcommand nghiệp vụ bên dưới đã bị gỡ.
+
 Ngày kiểm chứng: **2026-09-10**. **T12 đạt** trên môi trường Python mới `/tmp/auralytica-t12-clean`, cài package không editable từ lockfile. Môi trường `.venv` đang dùng được giữ nguyên. Đây là môi trường Python sạch trên Linux hiện tại; không phải cài lại hệ điều hành. Node.js, FFmpeg và Chromium đã có trên máy.
 
 ## Runtime không cần bộ phát triển

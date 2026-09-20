@@ -1,7 +1,7 @@
 [project]
 name = "auralytica"
 version = "0.1.0"
-description = "Add your description here"
+description = "Local web app for reviewing YouTube Takeout music and downloading kept audio"
 readme = "README.md"
 authors = [
     { name = "sakanaowo", email = "idiotbugg@gmail.com" }

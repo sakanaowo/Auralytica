@@ -1,5 +1,7 @@
 # T11 — Báo cáo nghiệm thu chức năng
 
+> Báo cáo này giữ bằng chứng MVP cũ. CLI nghiệp vụ được nhắc trong các tiêu chí đã bị gỡ ở WFT08; nghiệm thu hiện hành nằm tại [web workflow](2026-09-20-feature-web-workflow.md).
+
 Ngày kiểm chứng: **2026-09-10**. Kết quả: **AC01–AC08 đạt trong phạm vi MVP Linux, Takeout JSON**. [T12 quickstart/môi trường Python sạch](QUICKSTART.md) đã đạt; đây không phải cam kết phân loại đủ mọi video nhạc hoặc tải được mọi URL.
 
 ## Bằng chứng theo tiêu chí

@@ -6,6 +6,8 @@ description: Kết quả S01–S12, nghiệm thu AC01–AC08 và kiểm chứng 
 
 # Auralytica — Kế hoạch kiểm chứng
 
+> Đây là lịch sử kiểm thử MVP. WFT08 đã gỡ CLI nghiệp vụ; xem [testing web workflow](2026-09-20-feature-web-workflow.md) cho contract và lệnh kiểm chứng hiện hành.
+
 Cập nhật: **2026-09-10**. **S01–S12 đạt**, gồm [quickstart môi trường sạch](QUICKSTART.md); [AC01–AC08 đạt trong phạm vi Linux/JSON](ACCEPTANCE.md). Các kịch bản liên kết [kế hoạch triển khai](../planning/README.md), [Requirements](../requirements/README.md) và [Thiết kế](../design/README.md).
 
 ## FE02 — kiểm chứng collector/cache/audit, 2026-09-11
