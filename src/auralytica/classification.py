@@ -76,6 +76,7 @@ def classify_import(db, import_id):
     channels = {row['channel_key']: dict(row) for row in db.execute('SELECT * FROM channel_decisions')}
     run_id = start_run(db, 'classification', import_id, RULE_VERSION, {'feature_version':'rules-v1-inputs'})
     counts = {'music': 0, 'rest': 0}
+    source_hash = db.execute('SELECT source_hash FROM imports WHERE id=?',(import_id,)).fetchone()[0]
     for row in rows:
         metadata = json.loads(row['metadata_json'])
         result = suggest(title=row['title'], channel_name=row['channel_name'],
