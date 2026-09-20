@@ -12,7 +12,7 @@ Cập nhật: **2026-09-10**. T01–T12 hoàn tất; AC01–AC08 đã kiểm ch�
 
 [Thiết kế MVP](../design/README.md): luồng sử dụng, dữ liệu dùng chung, các thành phần và xử lý lỗi.
 
-Tài liệu này là nguồn phạm vi hiện hành. Các phương án audio model, nhận diện bài hát và matching Spotify trong [problem.md](../../references/problem.md) hoặc notebook là tham khảo/thử nghiệm trước đó, không phải yêu cầu triển khai MVP.
+Tài liệu này ghi phạm vi MVP đã triển khai. Hướng phiên bản tiếp theo nằm ở [Web workflow — requirements](2026-09-20-feature-web-workflow.md): web-only, Import → Explore → Deduplicate → Download; phần đó ưu tiên khi khác với yêu cầu CLI/màn hình gộp dưới đây. Các phương án audio model, nhận diện bài hát và matching Spotify trong [problem.md](../../references/problem.md) hoặc notebook là tham khảo/thử nghiệm trước đó, không phải yêu cầu triển khai MVP.
 
 ## Problem Statement
 Người dùng muốn tải audio của các video âm nhạc đã xem trên **YouTube thường**, kể cả video không mang category Music. Đầu vào là folder đã giải nén từ Google Takeout; người dùng không phải tự thu thập URL từng video.

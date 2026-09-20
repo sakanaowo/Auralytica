@@ -6,7 +6,7 @@ import sqlite3
 from collections.abc import Iterator
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class BatchBusyError(ValueError):
@@ -84,6 +84,45 @@ CREATE TABLE settings (
 );
 """
 
+_SCHEMA_V2 = """
+CREATE TABLE audit_runs (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    import_id INTEGER NOT NULL REFERENCES imports(id),
+    source_hash TEXT NOT NULL,
+    version TEXT NOT NULL,
+    config_json TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at TEXT
+);
+CREATE TABLE audit_events (
+    id INTEGER PRIMARY KEY,
+    run_id TEXT REFERENCES audit_runs(id),
+    video_id TEXT REFERENCES videos(id),
+    kind TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX audit_events_run ON audit_events(run_id, id);
+CREATE INDEX audit_events_video ON audit_events(video_id, id);
+CREATE TABLE metadata_items (
+    run_id TEXT NOT NULL REFERENCES audit_runs(id),
+    video_id TEXT NOT NULL REFERENCES videos(id),
+    position INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','done','failed')),
+    observation_id INTEGER REFERENCES audit_events(id),
+    PRIMARY KEY(run_id, video_id)
+);
+CREATE TABLE metadata_cache (
+    provider_key TEXT NOT NULL,
+    video_id TEXT NOT NULL REFERENCES videos(id),
+    observation_id INTEGER NOT NULL REFERENCES audit_events(id),
+    fetched_at REAL NOT NULL,
+    PRIMARY KEY(provider_key, video_id)
+);
+"""
+
 
 @contextmanager
 def transaction(db: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
@@ -122,6 +161,11 @@ def open_database(path: str | Path) -> sqlite3.Connection:
                     if statement.strip():
                         db.execute(statement)
                 db.execute("PRAGMA user_version=1")
+            if version < 2:
+                for statement in _SCHEMA_V2.split(';'):
+                    if statement.strip():
+                        db.execute(statement)
+                db.execute("PRAGMA user_version=2")
         return db
     except BaseException:
         db.close()
@@ -137,6 +181,14 @@ def get_video(db: sqlite3.Connection, video_id: str) -> sqlite3.Row | None:
 
 def set_video_group(db: sqlite3.Connection, video_id: str, group: str | None) -> None:
     """Store a manual override, or reset it to automatic classification with None."""
+    if not db.in_transaction:
+        with transaction(db):
+            set_video_group(db, video_id, group)
+        return
+    from .audit import record_event
+    before = get_video(db, video_id)
+    if before is None:
+        raise KeyError(video_id)
     cursor = db.execute(
         "UPDATE videos SET user_group=?, "
         "user_decided_at=CASE WHEN ? IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END WHERE id=?",
@@ -144,6 +196,13 @@ def set_video_group(db: sqlite3.Connection, video_id: str, group: str | None) ->
     )
     if cursor.rowcount == 0:
         raise KeyError(video_id)
+    decision = db.execute("SELECT id,run_id FROM audit_events WHERE video_id=? "
+                          "AND kind='classification_decided' ORDER BY id DESC LIMIT 1", (video_id,)).fetchone()
+    record_event(db, 'review_changed', dict(
+        decision_id=decision['id'] if decision else None, source='user',
+        before_group=before['effective_group'], after_group=group or before['auto_group'],
+        before_user_group=before['user_group'], after_user_group=group,
+    ), run_id=decision['run_id'] if decision else None, video_id=video_id)
 
 
 def get_setting(db: sqlite3.Connection, key: str) -> str | None:

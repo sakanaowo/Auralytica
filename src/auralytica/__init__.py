@@ -5,12 +5,14 @@ from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
+import sys
 
 from . import download_controls as downloads
 from .importer import import_folder
 from .storage import open_database
 from .classification import classify_active
 from .review import list_videos, move_videos
+from . import metadata, audit
 
 
 def main() -> None:
@@ -42,6 +44,24 @@ def main() -> None:
     serve = commands.add_parser('serve', help='Chạy giao diện hai bảng và API local')
     serve.add_argument('--port', type=int, default=8765)
     serve.add_argument('--database', type=Path, default=Path.home()/'.local/share/auralytica/library.sqlite3')
+    meta = commands.add_parser('metadata', help='Lấy metadata YouTube Music có cache và log, không đổi nhóm')
+    meta_commands = meta.add_subparsers(dest='metadata_command', required=True)
+    for name in ('collect', 'status'):
+        sub = meta_commands.add_parser(name, help='Thu thập/tiếp tục metadata' if name == 'collect' else 'Xem tiến độ metadata')
+        sub.add_argument('--database', type=Path, default=Path.home()/'.local/share/auralytica/library.sqlite3')
+        if name == 'status':
+            sub.add_argument('run_id')
+        else:
+            sub.add_argument('--video-id', action='append', dest='video_ids', help='ID trong lịch sử; có thể lặp tùy chọn này')
+            sub.add_argument('--limit', type=int, default=50, help='Số video khi không chỉ định ID (mặc định 50, xem nhiều nhất)')
+            sub.add_argument('--resume', metavar='RUN_ID', help='Tiếp tục snapshot cũ, dùng cấu hình cũ')
+            sub.add_argument('--refresh', action='store_true', help='Bỏ qua cache cho lượt mới')
+            sub.add_argument('--cache-days', type=float, default=7)
+    audit_cli = commands.add_parser('audit', help='Xuất log JSONL local; không ghi đè file có sẵn')
+    audit_cli.add_argument('--database', type=Path, default=Path.home()/'.local/share/auralytica/library.sqlite3')
+    audit_cli.add_argument('--run-id')
+    audit_cli.add_argument('--video-id')
+    audit_cli.add_argument('--output', type=Path, required=True)
     for name in ('download', 'status', 'stop', 'resume'):
         command = commands.add_parser(name, help={'download':'Tải toàn bộ nhóm nhạc', 'status':'Xem tiến độ tải', 'stop':'Dừng lượt tải', 'resume':'Tiếp tục snapshot cũ'}[name])
         command.add_argument('--database', type=Path, default=Path.home()/'.local/share/auralytica/library.sqlite3')
@@ -53,7 +73,30 @@ def main() -> None:
             command.add_argument('--page-size', type=int, default=50)
         else:
             command.add_argument('batch_id', type=int)
+    preview = commands.add_parser('classification-preview', help='Xem trước nhóm theo nhãn/metadata local; không sửa DB')
+    preview.add_argument('--database', type=Path, default=Path.home()/'.local/share/auralytica/library.sqlite3')
+    preview.add_argument('--labels', type=Path, required=True)
+    preview.add_argument('--metadata-log', type=Path, required=True)
+    preview.add_argument('--output', type=Path, required=True)
+    apply = commands.add_parser('classification-apply', help='Áp dụng preview còn khớp, giữ sửa tay và ghi audit')
+    apply.add_argument('--database', type=Path, default=Path.home()/'.local/share/auralytica/library.sqlite3')
+    apply.add_argument('--preview', type=Path, required=True)
+    apply.add_argument('--labels', type=Path, required=True)
+    apply.add_argument('--metadata-log', type=Path, required=True)
     args = parser.parse_args()
+    if args.command == 'classification-preview':
+        from .classification_preview import build_preview
+        try:
+            with closing(sqlite3.connect(args.database.resolve().as_uri()+'?mode=ro', uri=True)) as db:
+                db.row_factory = sqlite3.Row
+                db.execute('BEGIN')
+                result = build_preview(db, args.labels, args.metadata_log)
+            with args.output.open('x', encoding='utf-8') as handle:
+                json.dump(result, handle, ensure_ascii=False, indent=2)
+            print(json.dumps({k:v for k,v in result.items() if k != 'items'}, ensure_ascii=False, indent=2))
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            parser.error(str(exc))
+        return
     if args.command == 'serve':
         if not 1 <= args.port <= 65535:
             parser.error('port phải trong khoảng 1–65535.')
@@ -65,8 +108,28 @@ def main() -> None:
     if args.command:
         try:
             with closing(open_database(args.database)) as db:
-                if args.command == 'import':
+                if args.command == 'classification-apply':
+                    from .classification_preview import apply_preview
+                    result = apply_preview(db, json.loads(args.preview.read_text()), args.labels, args.metadata_log)
+                elif args.command == 'import':
                     result = import_folder(db, args.folder, history=args.history)
+                elif args.command == 'metadata':
+                    if args.metadata_command == 'status':
+                        result = metadata.get_run(db, args.run_id)
+                    else:
+                        if args.resume and (args.video_ids or args.refresh):
+                            raise ValueError('resume giữ snapshot/cấu hình cũ; không dùng cùng video-id hoặc refresh.')
+                        provider = metadata.YTMusicProvider()
+                        run_id = args.resume or metadata.create_run(db, provider_key=provider.key,
+                            video_ids=args.video_ids, limit=args.limit, cache_ttl=args.cache_days*86400, refresh=args.refresh)
+                        print(f'Metadata run: {run_id}', file=sys.stderr, flush=True)
+                        try:
+                            result = metadata.collect_run(db, run_id, provider)
+                        except KeyboardInterrupt:
+                            print(f'Đã dừng. Tiếp tục: auralytica metadata collect --resume {run_id} --database {args.database}', file=sys.stderr)
+                            raise SystemExit(130)
+                elif args.command == 'audit':
+                    result = audit.export_events(db, args.output, run_id=args.run_id, video_id=args.video_id)
                 elif args.command == 'classify':
                     result = classify_active(db)
                 elif args.command == 'list':

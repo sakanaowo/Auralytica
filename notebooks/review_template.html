@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FE03 — Duyệt video</title>
+<style>
+body{font:16px system-ui;background:#f4f7f5;color:#19372b;margin:24px}main{max-width:1200px;margin:auto}
+h1{font-size:26px}p{line-height:1.6}header{position:sticky;top:0;background:#f4f7f5;padding:12px 0;z-index:1}
+button,select,textarea{font:inherit;border:1px solid #97afa4;border-radius:6px;padding:10px;background:white;color:inherit}
+button{cursor:pointer}button:disabled{opacity:.45;cursor:default}button:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid #147458;outline-offset:2px}
+table{border-collapse:collapse;width:100%;background:white}td,th{padding:14px;border-bottom:1px solid #d4dfd8;text-align:left;vertical-align:top}
+.title{display:block;font-weight:600;margin-bottom:8px;overflow-wrap:anywhere}small{display:block;color:#526c60;margin:6px 0}a{color:#12624c}
+textarea{box-sizing:border-box;width:100%;min-width:180px;min-height:85px}select{width:100%;min-width:180px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}#storage-status{font-size:14px}td:first-child{width:45%}
+@media(max-width:650px){body{margin:12px}thead{display:none}tr,td{display:block}td:first-child{width:auto}td{border:0;padding:10px}tr{border-bottom:2px solid #d4dfd8}header{position:static}}
+</style>
+<main>
+<h1>Duyệt video âm nhạc</h1>
+<p><strong>__PRIORITY_COUNT__ dòng đầu được ưu tiên.</strong> Mở video để xác nhận nội dung chính là âm nhạc: cover, OST, AMV, remix hoặc biểu diễn đều phù hợp. Chọn Không phải nhạc cho Shorts, podcast, giải trí, nói chuyện/game có BGM. Piano/Synthesia có chữ “Tutorial” vẫn có thể là nhạc nếu chỉ biểu diễn; nếu chưa xác minh, chọn Chưa rõ. Không mở được video không đồng nghĩa với không phải nhạc.</p>
+<header>
+<div class="controls"><button id="export-csv" disabled>Xuất CSV nhãn đã sửa</button><button id="export-audit" disabled>Xuất log chỉnh sửa</button><span id="progress" role="status"></span></div>
+<p id="storage-status" role="status"></p>
+</header>
+<table><thead><tr><th>Video</th><th>Nhãn của bạn</th><th>Ghi chú / căn cứ</th></tr></thead><tbody></tbody></table>
+<p>CSV chỉ chứa các dòng bạn đã sửa. Xuất CSV để đưa nhãn vào notebook; log JSONL giữ lịch sử trước/sau từng lần sửa. Trang không tự gọi mạng hoặc tải media. Nút Mở video mở YouTube trong tab mới.</p>
+</main>
+<script id="review-data" type="application/json">__REVIEW_DATA__</script>
+<script>
+'use strict';
+const rows=JSON.parse(document.querySelector('#review-data').textContent);
+const key='auralytica-fe03-review-__REVIEW_KEY__';
+const allowed=['','music','non_music','uncertain','unavailable'];
+let events=[], edits={}, persistent=true;
+try {
+  const saved=JSON.parse(localStorage.getItem(key)||'null');
+  if(saved){
+    if(!Array.isArray(saved.events)||!saved.edits||typeof saved.edits!=='object') throw Error('Invalid draft');
+    for(const [id,edit] of Object.entries(saved.edits)){
+      if(!rows.some(r=>r.video_id===id)||!allowed.includes(edit.manual_label)||typeof edit.notes!=='string') throw Error('Invalid draft');
+    }
+    events=saved.events;edits=saved.edits;
+  }
+} catch {persistent=false;}
+function current(row){return edits[row.video_id]||{manual_label:row.manual_label,notes:row.notes};}
+function status(){
+  const resolved=rows.filter(r=>['music','non_music'].includes(current(r).manual_label)).length;
+  const count=Object.keys(edits).length;
+  document.querySelector('#progress').textContent=`${resolved}/${rows.length} có nhãn xác định · ${count} dòng đã sửa`;
+  document.querySelector('#export-csv').disabled=count===0;
+  document.querySelector('#export-audit').disabled=events.length===0;
+  document.querySelector('#storage-status').textContent=persistent
+    ? 'Bản nháp lưu trong trình duyệt này. Hãy xuất CSV để giữ kết quả ngoài trình duyệt.'
+    : 'Không lưu được bản nháp trong trình duyệt. Hãy xuất CSV và log trước khi đóng trang.';
+}
+function change(row,label,notes){
+  const before={...current(row)}, after={manual_label:label,notes};
+  if(before.manual_label===label&&before.notes===notes)return;
+  events.push({kind:'manual_review_changed',at:new Date().toISOString(),review_key:key,
+    video_id:row.video_id,source_hash:row.source_hash,before,after});
+  edits[row.video_id]=after;
+  try{localStorage.setItem(key,JSON.stringify({edits,events}));persistent=true;}catch{persistent=false;}
+  status();
+}
+const names=['Chưa gán nhãn','Nhạc','Không phải nhạc','Chưa rõ','Không mở được'];
+for(const [index,row] of rows.entries()){
+  const tr=document.createElement('tr'), video=document.createElement('td');
+  const title=document.createElement('span');title.className='title';title.textContent=row.title;video.append(title);
+  const channel=document.createElement('small');channel.textContent=`${index+1}. ${row.channel_name} · ${row.video_id}`;video.append(channel);
+  const link=document.createElement('a');link.textContent='Mở video';link.target='_blank';link.rel='noreferrer noopener';
+  link.href='https://www.youtube.com/watch?v='+encodeURIComponent(row.video_id);video.append(link);
+  const labelCell=document.createElement('td'), select=document.createElement('select');select.setAttribute('aria-label','Nhãn video '+(index+1));
+  allowed.forEach((value,i)=>{const option=new Option(names[i],value);option.disabled=value===''&&row.manual_label!=='';select.add(option);});
+  select.value=current(row).manual_label;labelCell.append(select);
+  const noteCell=document.createElement('td'), note=document.createElement('textarea');note.setAttribute('aria-label','Ghi chú video '+(index+1));
+  note.value=current(row).notes;noteCell.append(note);
+  select.addEventListener('change',()=>change(row,select.value,note.value));
+  note.addEventListener('input',()=>change(row,select.value,note.value));
+  tr.append(video,labelCell,noteCell);document.querySelector('tbody').append(tr);
+}
+function download(content,type,name){
+  const url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');
+  a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+document.querySelector('#export-csv').addEventListener('click',()=>{
+  const columns=['video_id','title','channel_name','source_hash','manual_label','label_source','notes'];
+  const quote=value=>'"'+String(value).replaceAll('"','""')+'"';
+  const records=rows.filter(row=>Object.hasOwn(edits,row.video_id)).map(row=>({...row,...current(row),label_source:'manual_review'}));
+  download('\ufeff'+[columns,...records.map(r=>columns.map(c=>r[c]))].map(r=>r.map(quote).join(',')).join('\r\n')+'\r\n',
+    'text/csv;charset=utf-8','fe03-review-labels.csv');
+});
+document.querySelector('#export-audit').addEventListener('click',()=>download(events.map(e=>JSON.stringify(e)).join('\n')+'\n',
+  'application/x-ndjson','fe03-review-events.jsonl'));
+status();
+</script>
+</html>

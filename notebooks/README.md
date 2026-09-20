@@ -9,9 +9,12 @@ Notebook được đánh số theo giai đoạn; chỉ tạo notebook khi bắt 
 | 01 — khảo sát dữ liệu | [`01_takeout_eda.ipynb`](01_takeout_eda.ipynb): kiểm tra Takeout, khám phá tiêu đề/kênh, xuất mẫu gán nhãn |
 | 02 — thiết kế tín hiệu | [`02_classification_design.ipynb`](02_classification_design.ipynb): thiết kế content gate, audit sample v2 và mô phỏng hàng chờ |
 | 03 — feature engineering | [`03_music_feature_engineering.ipynb`](03_music_feature_engineering.ipynb): recurrence, phiên/ngữ cảnh, nội dung/kênh và audit rules-v1; chưa huấn luyện/chốt ngưỡng |
-| 04 — tích hợp và hiệu năng | Dự kiến: đo metadata enrichment, hàng chờ duyệt và tải audio; chưa triển khai |
+| 04 — metadata YouTube Music | [`04_ytmusic_metadata_audit.ipynb`](04_ytmusic_metadata_audit.ipynb): đọc log mẫu 18 video offline, so player/queue, độ phủ giả thuyết và latency; chưa đổi classifier |
+| 05 — đánh giá residual | [`05_residual_evaluation.ipynb`](05_residual_evaluation.ipynb): ghép feature với log FE02, so giả thuyết UGC/recurrence, tạo review và kiểm tra nhãn; chưa chốt ngưỡng |
 
 ## Chạy
+
+Notebook 05: [kết quả sau 23 nhãn và cách giữ nhãn qua các lần review](../docs/references/fe03-labelled-results.md); [kết quả và giới hạn FE03](../docs/references/residual-evaluation.md). Chạy offline bằng kernel notebook hiện có; output mỗi lượt ở `artifacts/notebook-runs/05_residual/`. Mở `review.html` bằng trình duyệt, duyệt 12 dòng ưu tiên, chọn nhãn/ghi chú rồi bấm Xuất CSV nhãn đã sửa; đặt `AURALYTICA_FE03_LABELS` tới CSV đã xuất để đánh giá lại. Nút Xuất log chỉnh sửa lưu JSONL trước/sau từng lần sửa; bản nháp trình duyệt chưa tự nhập vào notebook. Vẫn có thể điền `priority_review.csv` trực tiếp. Metadata đã có trên đủ 70 ID của cohort cố định (18 cũ + 52 bổ sung được duyệt); cấu hình cohort bằng `AURALYTICA_FE03_COHORT`, không tự chọn lại mẫu sau enrichment. Test nghiên cứu chạy riêng bằng `.venv/bin/python -m unittest discover -s tests/research -v` và cần pandas trong group notebook.
 
 Từ thư mục gốc repo:
 
@@ -67,6 +70,12 @@ Thứ tự quyết định được thử nghiệm là: Shorts → kênh/video �
 Phần matching Spotify/ISRC trong notebook 02 đã được bỏ khỏi phạm vi sau khi rà lại yêu cầu. MVP tải audio của chính video YouTube được chọn; không cần tìm bản tương ứng trong catalog khác. Giữ notebook để truy vết nghiên cứu, không triển khai bước matching đó.
 
 Không chia sẻ CSV/output notebook khi chưa rà soát dữ liệu lịch sử cá nhân.
+
+## Notebook 04 — kiểm chứng YouTube Music
+
+[Báo cáo và thiết kế log](../docs/references/youtube-music-identification.md). Notebook đọc log của pilot đã được người dùng cho phép, **không gọi mạng hoặc sửa DB**. Mặc định đọc `artifacts/ytmusic-pilot/20260911T041238Z`; đổi bằng `AURALYTICA_YTM_RUN` tới một folder có manifest/events/summary cùng schema. Log raw không được commit nên máy mới cần có bộ log local trước khi chạy.
+
+Output ở `artifacts/notebook-runs/04_ytmusic_audit/<run>/<analysis>/`: bảng từng video, giả thuyết khớp, độ phủ, latency và review. Mỗi lần chạy tạo folder mới, không ghi đè nhãn đã điền. Chỉ 5 nhãn người dùng xác nhận trước pilot được điền sẵn; Topic/library/queue/type không biến thành nhãn thật. Không suy diễn độ phủ mẫu thành accuracy toàn lịch sử.
 
 ## Notebook 03 — nghiên cứu 2026-09-11
 

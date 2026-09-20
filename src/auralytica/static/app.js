@@ -1,6 +1,6 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
-const reasons = {manual:'Đã chuyển tay',topic_channel:'Kênh Topic',music_library:'Music library',music_hint:'Có dấu hiệu nhạc · cần duyệt',unknown:'Chưa rõ',talk_context:'Ngữ cảnh nói chuyện · cần duyệt',conflicting_evidence:'Bằng chứng mâu thuẫn',shorts_url:'YouTube Shorts',channel_decision:'Theo nhãn kênh'};
+const reasons = {ytmusic_strong:'Metadata YouTube Music',ytmusic_ugc_recurrence:'YouTube Music · xem lại nhiều ngày',manual:'Đã chuyển tay',topic_channel:'Kênh Topic',music_library:'Music library',music_hint:'Có dấu hiệu nhạc · cần duyệt',unknown:'Chưa rõ',talk_context:'Ngữ cảnh nói chuyện · cần duyệt',conflicting_evidence:'Bằng chứng mâu thuẫn',shorts_url:'YouTube Shorts',channel_decision:'Theo nhãn kênh'};
 const groups = {};
 let busy = false;
 let batchActive = false;

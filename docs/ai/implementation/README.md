@@ -6,7 +6,7 @@ description: Kết quả T01–T12, CLI/web local, tải audio và giới hạn 
 
 # Auralytica — Implementation
 
-Cập nhật 2026-09-10: **T01–T12 hoàn tất**. [Quickstart sạch](../testing/QUICKSTART.md) và [nghiệm thu chức năng](../testing/ACCEPTANCE.md) ghi bằng chứng/giới hạn; các mục T01–T11 dưới đây là lịch sử từng bước.
+Cập nhật 2026-09-11: **T01–T12 hoàn tất; FE02 collector/cache/audit đã triển khai**. [Metadata hiện hành](METADATA.md) mô tả schema v2, CLI và giới hạn. [Quickstart sạch](../testing/QUICKSTART.md) và [nghiệm thu chức năng](../testing/ACCEPTANCE.md) ghi bằng chứng MVP trước FE02; các mục T01–T12 dưới đây là lịch sử từng bước.
 
 ## Development Setup
 
@@ -156,3 +156,29 @@ Kiểm chứng S09: 60 test core/API, 4 browser; một mẫu thật Opus 1.430.4
 ### T12 — hoàn tất 2026-09-10
 
 Không thay runtime/schema. Bổ sung `tests/manual/quickstart.py` dùng thư viện chuẩn để kiểm tra package cài riêng, CLI/server/static/review/reimport; README viết lại theo luồng dùng và khôi phục. Môi trường mới không editable nạp code từ site-packages, đủ HTML/CSS/JS. 25 package runtime; không notebook/test trước smoke. Mẫu thật Opus giải mã được; sau cài dependency test, 66 core/API + 6 browser đạt. Tất cả task MVP hoàn tất; xem QUICKSTART cho giới hạn môi trường OS dùng chung.
+
+
+### FE03 — giao diện gán nhãn nghiên cứu (2026-09-13)
+
+Notebook 05 gọi `notebooks/residual_study.py::render_review` với cohort đã sắp 12 ca ưu tiên lên đầu. `notebooks/review_template.html` tạo trang độc lập có chọn nhãn/notes, tiến độ, localStorage theo hash toàn bộ review đầu vào, xuất CSV chỉ dòng đã sửa và log JSONL trước/sau/thời gian/source hash. Ghi chú lưu ngay khi nhập, kể cả reload khi chưa rời ô. Khi storage lỗi vẫn có thể xuất dữ liệu trong bộ nhớ. JSON nhúng escape HTML delimiter; văn bản render bằng textContent, URL chỉ dựng từ ID YouTube, không tự gọi mạng. Template được thêm vào inputs_sha256 của summary.
+
+Nhãn/log được tải về qua browser, không tự ghi DB hay sửa classifier. CSV đi qua validation `merge_labels` hiện có; ca thiếu nhãn không tự thành non_music. Đây là công cụ hoàn thành phần gán nhãn FE03, không phải FE04. Task tracing chưa được lifecycle thiết lập; tiến độ/bằng chứng giữ trong planning/testing/dashboard.
+
+Kiểm chứng: 7 unit nghiên cứu, 2 Chromium (desktop/mobile), notebook 4 cell code đạt; test notes reload đã tái hiện fail trước khi chuyển listener từ change sang input. [Hướng dẫn review](../../references/residual-evaluation.md).
+
+
+### FE03 — CSV người dùng và phân tích lỗi (2026-09-18)
+
+Notebook 05 nhập 18 nhãn hợp lệ, giữ 5 nhãn trước, tổng 23 nhãn/70 ID; không đổi classifier. Thêm bản sao nguyên byte input CSV, nhãn tích lũy, audit dự đoán theo video/quy tắc, lỗi FP/FN, so ngưỡng trên nhãn thật và metrics riêng 18 nhãn mới. Các số liệu và giới hạn tại [báo cáo](../../references/fe03-labelled-results.md).
+
+`uv sync --locked --group notebook` khôi phục dependency notebook còn thiếu; notebook thực thi đủ 4 cell code qua nbclient. `.venv/bin/python -m unittest discover -s tests/research -v`: 7 tests OK, exit 0. Không đổi helper/HTML/runtime nên không chạy lại browser/API. Lint tài liệu đạt sau khi cache offline không còn và chuyển sang `npx --yes ai-devkit@latest lint`. Không có request metadata/audio mới.
+
+
+### FE04 — preview (2026-09-18)
+
+[Classification preview](CLASSIFICATION_PREVIEW.md) mô tả CLI mới, validation, thứ tự giữ sửa tay/nhãn/metadata và giới hạn. `classification_preview.py` đọc DB và các artifact có sẵn, `__init__.py` thêm nhánh CLI read-only trước nhánh mở/migrate DB thường. Không đổi classify/import/web hoặc schema. Preview thật: 18 chuyển nhóm đề xuất, 0 xung đột. Apply còn chờ, không cần gán nhãn reel thêm để làm bước tích hợp tiếp.
+
+
+### FE04 — apply và live verification (2026-09-18)
+
+Đã có classification-apply transaction/kiểm tra snapshot, giữ override và khóa batch. Test fail trước code (thiếu apply/CLI), sau code **90 tests OK**, exit 0, `.venv/bin/python -m unittest discover -s tests -q` ngoài sandbox cho TestClient. `node --check src/auralytica/static/app.js` đạt. Áp dụng thật 18 thay đổi sau backup, kết quả 278 music/6107 rest; đối chiếu mọi bảng download và sửa tay cũ không thay đổi. [Chi tiết và artifact](../implementation/CLASSIFICATION_PREVIEW.md#áp-dụng-đã-triển-khai-và-chạy-thành-công). Không chạy lại Chromium; UI chỉ thêm hai tên lý do.

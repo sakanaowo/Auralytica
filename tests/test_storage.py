@@ -28,7 +28,7 @@ class StorageTests(unittest.TestCase):
         reopened = self.open()
         tables = {row[0] for row in reopened.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertTrue({'imports', 'watch_events', 'videos', 'channel_decisions', 'download_batches', 'download_items', 'settings'} <= tables)
-        self.assertEqual(reopened.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertEqual(reopened.execute("PRAGMA user_version").fetchone()[0], 2)
         self.assertEqual(reopened.execute("SELECT title FROM videos").fetchone()[0], 'Nhạc 音楽')
 
     def test_transaction_rolls_back_all_changes_on_constraint_failure(self):
@@ -127,6 +127,7 @@ class StorageTests(unittest.TestCase):
             db.commit()
         finally:
             db.close()
+
         with self.assertRaises(sqlite3.OperationalError):
             storage.open_database(self.path)
         db = sqlite3.connect(self.path)
@@ -136,3 +137,40 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT legacy_value FROM videos").fetchone()[0], 'preserve')
         finally:
             db.close()
+
+    def test_v1_migration_preserves_review_downloads_and_adds_audit_tables(self):
+        self.path.parent.mkdir()
+        with sqlite3.connect(self.path) as legacy:
+            legacy.executescript(storage._SCHEMA_V1)
+            legacy.execute("PRAGMA user_version=1")
+            legacy.execute("INSERT INTO videos(id,user_group) VALUES('abcdefghijk','music')")
+            legacy.execute("INSERT INTO download_batches(id,output_dir,status) VALUES(1,'/audio','completed')")
+            legacy.execute("INSERT INTO download_items(batch_id,video_id,status,file_path) VALUES(1,'abcdefghijk','completed','/audio/source.webm')")
+        db = self.open()
+        self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 2)
+        self.assertEqual(storage.get_video(db, 'abcdefghijk')['effective_group'], 'music')
+        self.assertEqual(db.execute('SELECT file_path FROM download_items').fetchone()[0], '/audio/source.webm')
+        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        self.assertTrue({'audit_runs','audit_events','metadata_items','metadata_cache'} <= tables)
+
+    def test_failed_v2_migration_rolls_back_new_tables_and_version(self):
+        self.path.parent.mkdir()
+        with sqlite3.connect(self.path) as legacy:
+            legacy.executescript(storage._SCHEMA_V1)
+            legacy.execute('PRAGMA user_version=1')
+            legacy.execute('CREATE TABLE audit_events(legacy TEXT)')
+            legacy.execute("INSERT INTO videos(id,user_group) VALUES('abcdefghijk','music')")
+        with self.assertRaises(sqlite3.OperationalError):
+            storage.open_database(self.path)
+        with sqlite3.connect(self.path) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 1)
+            self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='audit_runs'").fetchone())
+            self.assertEqual(db.execute('SELECT user_group FROM videos').fetchone()[0], 'music')
+
+    def test_review_update_rolls_back_when_audit_write_fails(self):
+        db = self.open()
+        self.seed(db)
+        db.execute("CREATE TRIGGER fail_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT,'fixture disk failure'); END")
+        with self.assertRaises(sqlite3.IntegrityError):
+            storage.set_video_group(db, 'video000001', 'music')
+        self.assertIsNone(storage.get_video(db, 'video000001')['user_group'])

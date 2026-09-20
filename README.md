@@ -43,6 +43,25 @@ Thay đường dẫn, VIDEO_ID và `1` bằng dữ liệu thật. `download`/`re
 
 Import tự chạy gợi ý và chỉ đối chiếu library với video có trong lịch sử. Khi nhiều nguồn, thêm `--history 'history/watch-history.json'` là đường dẫn tương đối trong folder. `classify` chạy lại gợi ý nhưng giữ sửa tay. `list` hỗ trợ `--channel`, `--reason` và `--sort`; chuyển tối đa 1.000 ID/lần. Chuyển về Còn lại không xóa file audio.
 
+## Metadata và log bộ lọc
+
+Collector YouTube Music đã có ở CLI; **chỉ thu thập bằng chứng, chưa tự chuyển nhóm**. Không cần đăng nhập/API key. Khởi động lại server sau khi cập nhật để các lần phân loại và chuyển tay mới được ghi audit.
+
+```sh
+# Lấy metadata cho 50 video xem nhiều nhất trong import hiện tại
+uv run --no-sync auralytica metadata collect --limit 50
+# Hoặc chọn đúng ID; ID bắt đầu bằng dấu - dùng --video-id=ID
+uv run --no-sync auralytica metadata collect --video-id=VIDEO_ID_1 --video-id=VIDEO_ID_2
+uv run --no-sync auralytica metadata status RUN_ID
+uv run --no-sync auralytica metadata collect --resume RUN_ID
+uv run --no-sync auralytica audit --run-id RUN_ID --output metadata-log.jsonl
+uv run --no-sync auralytica audit --video-id VIDEO_ID --output video-decisions.jsonl
+```
+
+Lệnh collect in `RUN_ID` ngay trên stderr rồi chạy tuần tự; Ctrl+C dừng và có thể resume. Cache mặc định 7 ngày, đổi bằng `--cache-days`, hoặc dùng `--refresh` cho lượt mới. Lặp collect với cùng limit sẽ chọn lại cùng nhóm xem nhiều nhất và dùng cache, không tự chuyển sang trang kế. Resume giữ ID/cấu hình của lượt cũ dù import hiện tại đã đổi; provider/version thay đổi thì tạo lượt mới.
+
+Log lưu trong **chính database đang dùng**, bảng `audit_runs`/`audit_events`; không có file log phiên tự tạo. Lệnh `audit` xuất JSONL theo run/video hoặc toàn bộ nếu bỏ bộ lọc, không ghi đè file có sẵn. Export có snapshot cấu hình và observation gốc khi dùng cache. Chỉ có lịch sử quyết định từ khi nâng cấp; log cũ trước đó không được dựng lại. Xem [thiết kế và giới hạn](docs/ai/implementation/METADATA.md).
+
 ## Dữ liệu và khôi phục
 
 Database mặc định: `~/.local/share/auralytica/library.sqlite3`. Mọi lệnh đều nhận `--database '/path/to/library.sqlite3'`; dùng **cùng đường dẫn** cho CLI và server nếu chọn database riêng. Ví dụ:
@@ -100,3 +119,10 @@ UV_PROJECT_ENVIRONMENT=/tmp/auralytica-check uv sync --locked --no-default-group
 API tải: `GET /api/downloads/preview?output_dir=...`, `GET /api/downloads`, `GET /api/downloads/{id}?page=1&page_size=20`; `POST /api/downloads` nhận `{"output_dir":"/path/to/audio"}`, `POST /api/downloads/{id}/stop` và `/resume`.
 
 POST phải có Origin khớp Host/port local, ví dụ `Origin: http://127.0.0.1:8765`. Title/kênh là dữ liệu văn bản, không render trực tiếp thành HTML. API không cần key bên ngoài và không mở CORS rộng.
+
+
+### Xem trước bộ lọc từ nhãn và metadata đã có
+
+Dùng `auralytica classification-preview --labels <review.csv> --metadata-log <audit.jsonl> --output <preview-moi.json>` để xem thay đổi đề xuất mà không sửa DB. [Hướng dẫn và giới hạn](docs/ai/implementation/CLASSIFICATION_PREVIEW.md). Đây là bước preview; chạy lệnh không tự cập nhật hai bảng trong ứng dụng.
+
+Sau khi xem preview, dùng `auralytica classification-apply --preview <preview.json> --labels <review.csv> --metadata-log <audit.jsonl>` để áp dụng. Lệnh chỉ chấp nhận preview còn khớp và chặn khi có batch chờ/chạy. Giữ sửa tay, ghi log trước/sau; khởi động lại server khi cập nhật code để nạp bộ phân loại mới.

@@ -42,6 +42,19 @@ Thứ tự thực hiện mặc định: **T01 → T02 → T03 → T04 → T05 �
 
 Không còn task MVP chưa hoàn thành. Các cải tiến phân loại hoặc dashboard phân tích cần phạm vi mới dựa trên sử dụng thực tế.
 
+### Feature engineering / YouTube Music — cập nhật 2026-09-11
+
+Phạm vi đang nghiên cứu: dùng metadata YouTube Music theo đúng ID lịch sử trước, sau đó xử lý residual; mọi quyết định phải truy được nguồn và sửa tay. [Báo cáo pilot](../../references/youtube-music-identification.md) là bằng chứng và giới hạn; chưa có classifier mới.
+
+| Bước | Trạng thái | Kết quả / phụ thuộc / kiểm chứng |
+| --- | --- | --- |
+| FE01 — pilot và phân tích | Hoàn tất trong mẫu đã duyệt | 18 ID cố định, 36 observations/37 HTTP request; notebook 04 chạy đủ 12 cell, xuất audit/review/latency. R03–R06, R12; so nguồn player/queue, giữ nhãn thật tách proxy, không sửa DB. |
+| FE02 — collector/cache/audit | Đã triển khai và kiểm chứng | Schema v2, collector/CLI, cache theo provider/version, retry/resume, audit decision/review và xuất JSONL. Smoke 18 ID trên bản sao DB: lần hai 0 network calls, 18 cache hits, video rows không đổi. [Chi tiết](../implementation/METADATA.md). Liên quan R05/R06/R11/R12, S02/S04. |
+| FE03 — đánh giá residual | Đã đánh giá 23 nhãn; còn thiếu đối chứng | CSV mới 16 music + 2 non_music; tổng 21 music + 2 non_music, còn 47/70. Metadata mạnh + UGC recurrence tìm 20/21, 0/2 nhận nhầm; nhánh kết hợp nội dung nhận nhầm 2 reel. Cần phân biệt Tutorial/performance và kiểm chứng Shorts/podcast/BGM; chưa chốt ngưỡng. [Kết quả](../../references/fe03-labelled-results.md). |
+| FE04 — nối gợi ý và lý do vào CLI/web | Đã có CLI preview/apply; đã cập nhật live DB | Đã áp dụng 18 thay đổi, 0 xung đột; live 278/6107. Preview read-only; apply kiểm tra snapshot/batch và audit, giữ sửa tay. Chưa có nút preview/apply trên web hoặc mở rộng metadata. [Chi tiết](../implementation/CLASSIFICATION_PREVIEW.md).  Sau FE02/FE03: giữ hai bảng và snapshot tải, hiển thị lý do/nguồn và ghi review. R01/R06–R08/R11, S04–S08/S11: override, lỗi mạng không thành non-music, khóa khi batch chạy, không thêm ID ngoài lịch sử. |
+
+T01–T12 vẫn hoàn tất về chức năng. FE01/FE02 chứng minh thu thập và truy vết tín hiệu, không chứng minh accuracy trên toàn lịch sử. Ưu tiên tiếp theo là bộ phản ví dụ và đánh giá residual FE03, rồi FE04; metadata đã có cho 70 ID được duyệt; chưa quét toàn lịch sử hoặc triển khai model audio. T13–T16 từng trao đổi không được tự đánh dấu hoàn tất từ các bước này.
+
 Các kịch bản S01–S12 được mô tả trong testing; mỗi kịch bản có task cùng số chịu trách nhiệm. Test hành vi được viết cùng task, không dồn toàn bộ đến T11.
 
 ## Timeline & Estimates
