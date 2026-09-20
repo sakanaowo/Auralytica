@@ -1,4 +1,4 @@
-"""Shared local storage for CLI and web services."""
+"""Shared local storage for web services and background workers."""
 
 from contextlib import contextmanager
 from pathlib import Path
@@ -6,11 +6,15 @@ import sqlite3
 from collections.abc import Iterator
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 4
 
 
 class BatchBusyError(ValueError):
     """A queued/running batch owns the current review state."""
+
+
+class RevisionConflict(ValueError):
+    """A persisted snapshot no longer matches the current library."""
 
 
 def assert_review_unlocked(db):
@@ -84,6 +88,106 @@ CREATE TABLE settings (
 );
 """
 
+_SCHEMA_V2 = """
+CREATE TABLE audit_runs (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    import_id INTEGER NOT NULL REFERENCES imports(id),
+    source_hash TEXT NOT NULL,
+    version TEXT NOT NULL,
+    config_json TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at TEXT
+);
+CREATE TABLE audit_events (
+    id INTEGER PRIMARY KEY,
+    run_id TEXT REFERENCES audit_runs(id),
+    video_id TEXT REFERENCES videos(id),
+    kind TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX audit_events_run ON audit_events(run_id, id);
+CREATE INDEX audit_events_video ON audit_events(video_id, id);
+CREATE TABLE metadata_items (
+    run_id TEXT NOT NULL REFERENCES audit_runs(id),
+    video_id TEXT NOT NULL REFERENCES videos(id),
+    position INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','done','failed')),
+    observation_id INTEGER REFERENCES audit_events(id),
+    PRIMARY KEY(run_id, video_id)
+);
+CREATE TABLE metadata_cache (
+    provider_key TEXT NOT NULL,
+    video_id TEXT NOT NULL REFERENCES videos(id),
+    observation_id INTEGER NOT NULL REFERENCES audit_events(id),
+    fetched_at REAL NOT NULL,
+    PRIMARY KEY(provider_key, video_id)
+);
+"""
+
+_SCHEMA_V3 = """
+CREATE TABLE classification_previews (
+    id TEXT PRIMARY KEY,
+    import_id INTEGER NOT NULL REFERENCES imports(id),
+    state_hash TEXT NOT NULL,
+    plan_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ready' CHECK(status IN ('ready','applied','stale')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    applied_at TEXT
+);
+CREATE INDEX classification_previews_import ON classification_previews(import_id, created_at);
+"""
+
+_SCHEMA_V4 = """
+CREATE TABLE song_aliases (
+    id INTEGER PRIMARY KEY,
+    song_key TEXT NOT NULL,
+    alias TEXT NOT NULL,
+    normalized_alias TEXT NOT NULL,
+    artist_scope TEXT,
+    source TEXT NOT NULL,
+    confirmed INTEGER NOT NULL DEFAULT 1 CHECK(confirmed IN (0,1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX song_aliases_lookup ON song_aliases(normalized_alias, confirmed);
+CREATE TABLE dedup_runs (
+    id TEXT PRIMARY KEY,
+    import_id INTEGER NOT NULL REFERENCES imports(id),
+    input_hash TEXT NOT NULL,
+    algorithm_version TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'completed',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE dedup_groups (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES dedup_runs(id),
+    fingerprint TEXT NOT NULL,
+    title_key TEXT NOT NULL,
+    evidence_type TEXT NOT NULL,
+    artist_conflict INTEGER NOT NULL DEFAULT 0 CHECK(artist_conflict IN (0,1))
+);
+CREATE INDEX dedup_groups_run ON dedup_groups(run_id, id);
+CREATE TABLE dedup_members (
+    group_id TEXT NOT NULL REFERENCES dedup_groups(id),
+    video_id TEXT NOT NULL REFERENCES videos(id),
+    evidence_json TEXT NOT NULL,
+    version_marker TEXT,
+    PRIMARY KEY(group_id, video_id)
+);
+CREATE TABLE download_selections (
+    video_id TEXT PRIMARY KEY REFERENCES videos(id),
+    keep INTEGER NOT NULL CHECK(keep IN (0,1)),
+    revision INTEGER NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE rejected_groups (
+    fingerprint TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 
 @contextmanager
 def transaction(db: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
@@ -122,6 +226,21 @@ def open_database(path: str | Path) -> sqlite3.Connection:
                     if statement.strip():
                         db.execute(statement)
                 db.execute("PRAGMA user_version=1")
+            if version < 2:
+                for statement in _SCHEMA_V2.split(';'):
+                    if statement.strip():
+                        db.execute(statement)
+                db.execute("PRAGMA user_version=2")
+            if version < 3:
+                for statement in _SCHEMA_V3.split(';'):
+                    if statement.strip():
+                        db.execute(statement)
+                db.execute("PRAGMA user_version=3")
+            if version < 4:
+                for statement in _SCHEMA_V4.split(';'):
+                    if statement.strip():
+                        db.execute(statement)
+                db.execute("PRAGMA user_version=4")
         return db
     except BaseException:
         db.close()
@@ -137,6 +256,14 @@ def get_video(db: sqlite3.Connection, video_id: str) -> sqlite3.Row | None:
 
 def set_video_group(db: sqlite3.Connection, video_id: str, group: str | None) -> None:
     """Store a manual override, or reset it to automatic classification with None."""
+    if not db.in_transaction:
+        with transaction(db):
+            set_video_group(db, video_id, group)
+        return
+    from .audit import record_event
+    before = get_video(db, video_id)
+    if before is None:
+        raise KeyError(video_id)
     cursor = db.execute(
         "UPDATE videos SET user_group=?, "
         "user_decided_at=CASE WHEN ? IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END WHERE id=?",
@@ -144,6 +271,13 @@ def set_video_group(db: sqlite3.Connection, video_id: str, group: str | None) ->
     )
     if cursor.rowcount == 0:
         raise KeyError(video_id)
+    decision = db.execute("SELECT id,run_id FROM audit_events WHERE video_id=? "
+                          "AND kind='classification_decided' ORDER BY id DESC LIMIT 1", (video_id,)).fetchone()
+    record_event(db, 'review_changed', dict(
+        decision_id=decision['id'] if decision else None, source='user',
+        before_group=before['effective_group'], after_group=group or before['auto_group'],
+        before_user_group=before['user_group'], after_user_group=group,
+    ), run_id=decision['run_id'] if decision else None, video_id=video_id)
 
 
 def get_setting(db: sqlite3.Connection, key: str) -> str | None:

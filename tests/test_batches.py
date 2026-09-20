@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from auralytica import batches, classification, importer, review, storage
+from auralytica import batches, classification, dedup, importer, review, storage
 
 
 def create_concurrently(database, output, start, results):
@@ -46,6 +46,48 @@ class BatchTests(unittest.TestCase):
         self.assertFalse((self.root/'different').exists())
         ids={row[0] for row in self.db.execute('SELECT video_id FROM download_items')}
         self.assertEqual(ids,{'00000000000','00000000001','00000000002'})
+
+    def test_eligible_snapshot_excludes_only_explicit_selection_and_rejects_stale_token(self):
+        initial = batches.eligible_snapshot(self.db, self.output)
+        self.assertEqual(
+            {key: initial[key] for key in ('music', 'excluded', 'kept', 'skipped', 'queued', 'needed')},
+            {'music': 3, 'excluded': 0, 'kept': 3, 'skipped': 0, 'queued': 3, 'needed': 3},
+        )
+        dedup.update_selections(self.db, ['00000000001'], False, 0)
+        current = batches.eligible_snapshot(self.db, self.output)
+        self.assertEqual((current['music'], current['excluded'], current['kept']), (3, 1, 2))
+        with self.assertRaises(storage.RevisionConflict):
+            batches.create_batch(self.db, self.output, expected_token=initial['token'])
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM download_batches').fetchone()[0], 0)
+
+        batch = batches.create_batch(self.db, self.output, expected_token=current['token'])
+        self.assertEqual((batch['total'], batch['excluded'], batch['kept']), (2, 1, 2))
+        self.assertEqual(
+            {row[0] for row in self.db.execute('SELECT video_id FROM download_items WHERE batch_id=?', (batch['batch_id'],))},
+            {'00000000000', '00000000002'},
+        )
+        batches.pause_batch(self.db, batch['batch_id'])
+        dedup.update_selections(self.db, ['00000000001'], True, 1)
+        self.assertEqual(batches.resume_batch(self.db, batch['batch_id'])['total'], 2)
+
+    def test_preview_token_is_bound_to_output_and_valid_file_state(self):
+        self.output.mkdir()
+        path = self.output/'existing.webm'
+        path.write_bytes(b'audio')
+        self.db.execute("INSERT INTO download_batches(id,output_dir,status) VALUES(1,?,'completed')", (str(self.output),))
+        self.db.execute(
+            "INSERT INTO download_items(batch_id,video_id,status,file_path,file_size) "
+            "VALUES(1,'00000000000','completed',?,5)",
+            (str(path),),
+        )
+        preview = batches.eligible_snapshot(self.db, self.output)
+        self.assertEqual((preview['skipped'], preview['needed']), (1, 2))
+        with self.assertRaises(storage.RevisionConflict):
+            batches.create_batch(self.db, self.root/'other', expected_token=preview['token'])
+        path.unlink()
+        with self.assertRaises(storage.RevisionConflict):
+            batches.create_batch(self.db, self.output, expected_token=preview['token'])
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM download_batches').fetchone()[0], 1)
 
     def test_completed_files_skip_only_at_valid_destination(self):
         self.output.mkdir()

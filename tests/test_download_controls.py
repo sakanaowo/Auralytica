@@ -1,7 +1,5 @@
 import json
 from pathlib import Path
-import subprocess
-import sys
 import tempfile
 import time
 import unittest
@@ -33,16 +31,21 @@ class DownloadControlTests(unittest.TestCase):
     def post(self, path, data=None):
         return self.client.post(path, headers={'Origin': ORIGIN}, json=data)
 
+    def start(self, output=None):
+        output = output or self.output
+        preview = self.client.get('/api/downloads/preview', params={'output_dir': str(output)}).json()
+        return self.post('/api/downloads', {'output_dir': str(output), 'preview_token': preview['token']})
+
     def test_preview_snapshot_stop_edit_resume_and_paginated_status(self):
         preview = self.client.get('/api/downloads/preview', params={'output_dir': str(self.output)})
         self.assertEqual(preview.status_code, 200)
         self.assertEqual(preview.json()['needed'], 2)
         self.assertFalse(self.output.exists())
-        response = self.post('/api/downloads', {'output_dir': str(self.output)})
+        response = self.start()
         self.assertEqual(response.status_code, 200, response.text)
         batch = response.json()['batch_id']
         self.assertEqual(response.json()['total'], 2)
-        self.assertEqual(self.post('/api/downloads', {'output_dir': str(self.output)}).json()['batch_id'], batch)
+        self.assertEqual(self.start().json()['batch_id'], batch)
         status = self.client.get(f'/api/downloads/{batch}?page_size=1').json()
         self.assertEqual(len(status['items']), 1)
         self.assertEqual(status['total'], 2)
@@ -51,8 +54,43 @@ class DownloadControlTests(unittest.TestCase):
         self.assertEqual(self.post(f'/api/downloads/{batch}/resume').json()['total'], 2)
         self.assertEqual(self.client.get('/api/downloads').json()['batches'][0]['batch_id'], batch)
 
-    def test_finished_files_disable_preview_and_cli_status_stop_resume_share_database(self):
-        response = self.post('/api/downloads', {'output_dir': str(self.output)})
+    def test_preview_token_applies_dedup_selection_to_new_batch(self):
+        selection = self.post('/api/dedup/selections', {
+            'video_ids': ['00000000001'], 'keep': False, 'expected_revision': 0,
+        })
+        self.assertEqual(selection.status_code, 200, selection.text)
+        preview = self.client.get('/api/downloads/preview', params={'output_dir': str(self.output)})
+        self.assertEqual(preview.status_code, 200, preview.text)
+        data = preview.json()
+        self.assertEqual(
+            {key: data[key] for key in ('music', 'excluded', 'kept', 'skipped', 'queued', 'needed')},
+            {'music': 2, 'excluded': 1, 'kept': 1, 'skipped': 0, 'queued': 1, 'needed': 1},
+        )
+        response = self.post('/api/downloads', {'output_dir': str(self.output), 'preview_token': data['token']})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual((response.json()['total'], response.json()['excluded']), (1, 1))
+        with open_database(self.database) as db:
+            self.assertEqual(
+                [row[0] for row in db.execute('SELECT video_id FROM download_items WHERE batch_id=?',
+                                               (response.json()['batch_id'],))],
+                ['00000000000'],
+            )
+
+    def test_stale_preview_token_returns_conflict_without_creating_batch(self):
+        preview = self.client.get('/api/downloads/preview', params={'output_dir': str(self.output)}).json()
+        self.assertEqual(self.post('/api/dedup/selections', {
+            'video_ids': ['00000000001'], 'keep': False, 'expected_revision': 0,
+        }).status_code, 200)
+        response = self.post('/api/downloads', {
+            'output_dir': str(self.output), 'preview_token': preview['token'],
+        })
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn('preview', response.json()['detail'])
+        with open_database(self.database) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM download_batches').fetchone()[0], 0)
+
+    def test_finished_files_disable_preview_and_new_batch_skips_all(self):
+        response = self.start()
         self.assertEqual(response.status_code, 200, response.text)
         batch = response.json()['batch_id']
         def adapter(video_id, directory, progress, stopped, lock_fd):
@@ -61,17 +99,13 @@ class DownloadControlTests(unittest.TestCase):
         with open_database(self.database) as db:
             run_batch(db, batch, adapter=adapter)
         self.assertEqual(self.client.get('/api/downloads/preview', params={'output_dir': str(self.output)}).json()['needed'], 0)
-        cli = str(Path(sys.executable).parent/'auralytica')
-        result = subprocess.run([cli, 'status', '--database', str(self.database)], capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout)['status'], 'completed')
-        result = subprocess.run([cli, 'download', '--output', str(self.output), '--database', str(self.database)], capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout)['skipped'], 2)
+        result = self.start()
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertEqual((result.json()['status'], result.json()['skipped']), ('completed', 2))
 
     def test_launch_failure_pauses_and_is_visible_and_inputs_are_guarded(self):
         self.app.state.launch_worker.side_effect = OSError('cannot start process')
-        response = self.post('/api/downloads', {'output_dir': str(self.output)})
+        response = self.start()
         self.assertEqual(response.status_code, 200, response.text)
         status = self.client.get(f"/api/downloads/{response.json()['batch_id']}").json()
         self.assertEqual(status['status'], 'paused')
@@ -81,25 +115,22 @@ class DownloadControlTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/downloads/999').status_code, 400)
         self.assertEqual(self.client.get('/api/downloads/1?page=0').status_code, 422)
 
-    def test_cli_stop_and_resume_completed_snapshot_without_network(self):
-        response = self.post('/api/downloads', {'output_dir': str(self.output)})
+    def test_web_stop_and_resume_completed_snapshot_without_network(self):
+        response = self.start()
         batch = response.json()['batch_id']
-        cli = str(Path(sys.executable).parent/'auralytica')
-        def call(*args):
-            return subprocess.run([cli, *args, '--database', str(self.database)], capture_output=True, text=True, timeout=10)
-        stopped = call('stop', str(batch))
-        self.assertEqual(stopped.returncode, 0, stopped.stderr)
-        self.assertEqual(json.loads(stopped.stdout)['status'], 'paused')
+        stopped = self.post(f'/api/downloads/{batch}/stop')
+        self.assertEqual(stopped.status_code, 200, stopped.text)
+        self.assertEqual(stopped.json()['status'], 'paused')
         with open_database(self.database) as db:
             for i in range(2):
                 path = self.output/f'{i}.webm'; path.write_bytes(b'fixture')
                 db.execute("UPDATE download_items SET status='completed',file_path=?,file_size=7 WHERE batch_id=? AND video_id=?", (str(path), batch, f'{i:011d}'))
-        resumed = call('resume', str(batch))
-        self.assertEqual(resumed.returncode, 0, resumed.stderr)
-        self.assertEqual(json.loads(resumed.stdout)['status'], 'completed')
+        resumed = self.post(f'/api/downloads/{batch}/resume')
+        self.assertEqual(resumed.status_code, 200, resumed.text)
+        self.assertEqual(resumed.json()['status'], 'completed')
 
     def test_detached_worker_reports_preflight_error_and_recovers_orphan(self):
-        response = self.post('/api/downloads', {'output_dir': str(self.output)})
+        response = self.start()
         batch = response.json()['batch_id']
         self.output.rmdir(); self.output.write_text('not a directory')
         from auralytica.download_controls import launch_worker

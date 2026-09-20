@@ -19,6 +19,19 @@ class QuietLogger:
     def error(self, message): pass
 
 
+def summarize_error(exc):
+    """Return a useful local status without persisting provider URLs or tokens."""
+    raw = str(exc).casefold()
+    fatal = isinstance(exc, OSError) or any(
+        marker in raw for marker in ('no space left on device', 'permission denied', 'read-only file system'))
+    if fatal:
+        return 'filesystem', 'Không thể ghi file tải; kiểm tra quyền và dung lượng.', True
+    if any(marker in raw for marker in ('private video', 'video unavailable', 'has been removed',
+                                        'video is unavailable', 'not available')):
+        return 'unavailable', 'Video không khả dụng, đã bị xóa hoặc đặt riêng tư.', False
+    return 'download_error', 'yt-dlp không thể tải video này.', False
+
+
 def main():
     video_id, directory = sys.argv[1:]
     if not re.fullmatch(r'[A-Za-z0-9_-]{11}',video_id):
@@ -43,12 +56,8 @@ def main():
                   'acodec':downloaded.get('acodec', info.get('acodec')),
                   'vcodec':downloaded.get('vcodec', info.get('vcodec'))})
     except Exception as exc:
-        message = str(exc)
-        fatal = isinstance(exc, OSError) or any(marker in message for marker in ('No space left on device','Permission denied','Read-only file system'))
-        code = 'filesystem' if fatal else 'download_error'
-        if not fatal and any(marker in message.lower() for marker in ('private video','video unavailable','has been removed')):
-            code = 'unavailable'
-        emit({'type':'error','code':code,'message':message[:1500],'fatal':fatal})
+        code, message, fatal = summarize_error(exc)
+        emit({'type':'error','code':code,'message':message,'fatal':fatal})
         raise SystemExit(1)
 
 

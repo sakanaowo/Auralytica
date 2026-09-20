@@ -208,3 +208,15 @@ print(json.dumps({'type':'result','path':str(p),'id':sys.argv[-2],'acodec':'opus
         with self.assertRaises(downloader.DownloadFailure) as failure:
             empty('../bad-id', self.root, lambda *args: None, lambda: False, None)
         self.assertEqual(failure.exception.code, 'invalid_id')
+
+    def test_ytdlp_error_summary_does_not_persist_urls_or_tokens(self):
+        from auralytica import _ytdlp
+        code, message, fatal = _ytdlp.summarize_error(
+            RuntimeError('Private video https://signed.example/audio?token=SECRET'))
+        self.assertEqual((code, fatal), ('unavailable', False))
+        self.assertNotIn('SECRET', message)
+        self.assertNotIn('https://', message)
+        self.assertEqual(
+            _ytdlp.summarize_error(OSError(errno.ENOSPC, 'No space left on device')),
+            ('filesystem', 'Không thể ghi file tải; kiểm tra quyền và dung lượng.', True),
+        )

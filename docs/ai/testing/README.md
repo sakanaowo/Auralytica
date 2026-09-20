@@ -6,9 +6,34 @@ description: Kết quả S01–S12, nghiệm thu AC01–AC08 và kiểm chứng 
 
 # Auralytica — Kế hoạch kiểm chứng
 
+> Đây là lịch sử kiểm thử MVP. WFT08 đã gỡ CLI nghiệp vụ; xem [testing web workflow](2026-09-20-feature-web-workflow.md) cho contract và lệnh kiểm chứng hiện hành.
+
 Cập nhật: **2026-09-10**. **S01–S12 đạt**, gồm [quickstart môi trường sạch](QUICKSTART.md); [AC01–AC08 đạt trong phạm vi Linux/JSON](ACCEPTANCE.md). Các kịch bản liên kết [kế hoạch triển khai](../planning/README.md), [Requirements](../requirements/README.md) và [Thiết kế](../design/README.md).
 
+## FE02 — kiểm chứng collector/cache/audit, 2026-09-11
+
+**82 test core/API + 6 test Chromium đạt**, exit 0; wheel build đạt. Không diễn giải kiểm thử chức năng thành accuracy phân loại.
+
+| Lệnh / bằng chứng | Kết quả |
+| --- | --- |
+| `.venv/bin/python -m unittest discover -s tests -v` | 82 tests OK. [Log local](../../../artifacts/testing-runs/fe02-core.log) |
+| `.venv/bin/python -m unittest discover -s tests/browser -v` | 6 tests OK; luồng 6.400 video/import/review/download/restart/reimport dùng audio fixture, không phát sinh page error |
+| `uv build --wheel --out-dir /tmp/auralytica-fe02-dist` | Exit 0; wheel chứa metadata.py/audit.py và dependency ytmusicapi==1.12.2 |
+| Smoke collector trên bản sao DB, đúng 18 ID đã duyệt | Lượt một 18 network calls; lượt hai 0 calls/18 cache hits; video rows giữ nguyên. [Summary](../../../artifacts/metadata-smoke/fe02-20260911T081317Z/summary.json) |
+
+TDD: migration fail `1 != 2` trước thay code; test audit decision fail vì chưa có event; collector thiếu service; CLI metadata bị parser từ chối. Sau triển khai các ca tương ứng đạt.
+
+Kiểm chứng bổ sung cho S02/S04/S05: migration lỗi rollback cả version/tables, giữ review/download; audit lỗi rollback sửa nhóm; cache TTL/refresh/provider version, exact ID, type lạ/malformed, missing/UNPLAYABLE không thành non-music; retry giới hạn và attempt liên tục sau resume; snapshot không đổi khi active import đổi; khóa tiến trình thật/kill recovery; CLI status/export có dependency cache và không ghi đè file. Rules-v1 không đổi quyết định; các test baseline vẫn đạt.
+
+Khoảng trống còn lại: chưa đánh giá precision/recall hoặc music-primary của player UGC; chưa có UI metadata/reason mới; chưa nghiệm thu throttling quy mô lớn, retention audit hoặc môi trường OS mới. FE03/FE04 theo [planning](../planning/README.md). Cảnh báo Starlette TestClient/httpx vẫn xuất hiện như trước, không làm test fail.
+
 ## Test Coverage Goals
+
+### FE03 — nghiên cứu offline, 2026-09-13
+
+Notebook 05 chạy đủ **4 cell code (8 cell tổng cộng)**; `.venv/bin/python -m unittest discover -s tests/research -v` → **5 tests OK**, exit 0. Bộ nghiên cứu dùng pandas/group notebook, chạy tách core/API. Kiểm tra phép tính candidate, guard podcast/gameplay/Shorts, category Gaming, missing/error/mismatch, UNPLAYABLE, nhãn thiếu lớp và CSV sai ID/snapshot/label. Đây là synthetic logic checks, không thay kiểm chứng video thật.
+
+[Báo cáo FE03](../../references/residual-evaluation.md) ghi 70 mẫu discovery, 5 nhãn music/65 chưa resolve, không có precision/recall hoặc ngưỡng đã chốt. Mẫu mới không trùng holdout; notebook không gọi mạng hoặc sửa app DB. Không chạy lại suite runtime/browser vì lượt này chỉ thêm công cụ nghiên cứu offline và tài liệu.
 
 Kiểm chứng hành vi import, hai danh sách và tải audio, đặc biệt persistence, snapshot và khôi phục. Mỗi Sxx có task Txx chịu trách nhiệm. Không dùng lint tài liệu hoặc kết quả notebook làm bằng chứng ứng dụng hoạt động.
 
@@ -158,3 +183,38 @@ S11 tiếp tục nghiệm thu toàn luồng và quy mô dữ liệu; S12 quickst
 ### S12 — đạt 2026-09-10
 
 [QUICKSTART.md](QUICKSTART.md) ghi lệnh và report. Package không editable được cài vào môi trường Python mới, không notebook/test; smoke thư viện chuẩn xác nhận CLI help/import, web assets, chuyển nhóm web→CLI và reimport. Một mẫu mạng hoàn tất Opus 1.430.465 byte, giải mã exit 0, lần sau skip. Sau thêm dependency test/browser, **66 test core/API + 6 test Chromium đạt** trên package đã cài. README bỏ trạng thái nút tải cũ, nêu điều kiện Linux/Node/SQLite, dữ liệu và khôi phục. Không phát hiện lỗi production mới; các giới hạn OS/accuracy và cảnh báo TestClient được giữ trong report.
+
+
+### FE03 — mở rộng metadata đã duyệt, 2026-09-13
+
+Collector chạy trên bản sao DB, đúng 52 ID được cho phép: 52 attempts/52 done/HTTP 200, 29,65 giây; log hợp nhất giữ observation của đủ 70 ID. Video rows không đổi. [Summary local](../../../artifacts/metadata-smoke/fe03-20260913T082334Z/summary.json).
+
+Notebook 05 chạy lại đủ 4 cell code (8 cell tổng cộng) trên cohort cố định. **7 test nghiên cứu đạt**, bổ sung test trước code cho việc giữ ID/nhãn khi cập nhật metadata và giữ notes khi nhập CSV. Không có nhãn non_music độc lập nên metric vẫn được giữ trống; không tuyên bố accuracy. Không chạy lại runtime/browser vì không thay code ứng dụng.
+
+
+### FE03 — gán nhãn và xuất kết quả trên trình duyệt, 2026-09-13
+
+- `.venv/bin/python -m unittest discover -s tests/research -v`: **7 tests OK**, exit 0.
+- `.venv/bin/python -m unittest discover -s tests/research_browser -v`: **2 tests OK**, exit 0; Chromium chạy ngoài sandbox. Bộ này tách khỏi unit nghiên cứu vì cần group browser và notebook.
+- Notebook 05 thực thi thành công **4 cell code**; tạo review 70 video, 12 ca ưu tiên, giữ 5 nhãn có trước. Summary hash thêm template HTML. Không gọi thêm metadata/audio.
+
+Bước red trước renderer: test fail vì thiếu trang có thể gán nhãn. Regression note nhập rồi reload trước blur tái hiện mất ghi chú; sau đổi listener input đạt. Browser round-trip CSV → pandas → merge_labels giữ Unicode, dấu phẩy/quote/newline, chỉ sửa đúng video; log ghi before/after/source hash/timestamp. Kiểm tra XSS qua tiêu đề, không có HTTP tự động, bản nháp bộ khác không bị lẫn; chặn localStorage vẫn xuất được nhãn unavailable/notes. Màn hình 390px không tràn ngang. Không chạy lại runtime/API vì lượt này chỉ đổi công cụ nghiên cứu và tài liệu.
+
+
+### FE03 — CSV người dùng và phân tích lỗi (2026-09-18)
+
+Notebook 05 nhập 18 nhãn hợp lệ, giữ 5 nhãn trước, tổng 23 nhãn/70 ID; không đổi classifier. Thêm bản sao nguyên byte input CSV, nhãn tích lũy, audit dự đoán theo video/quy tắc, lỗi FP/FN, so ngưỡng trên nhãn thật và metrics riêng 18 nhãn mới. Các số liệu và giới hạn tại [báo cáo](../../references/fe03-labelled-results.md).
+
+`uv sync --locked --group notebook` khôi phục dependency notebook còn thiếu; notebook thực thi đủ 4 cell code qua nbclient. `.venv/bin/python -m unittest discover -s tests/research -v`: 7 tests OK, exit 0. Không đổi helper/HTML/runtime nên không chạy lại browser/API. Lint tài liệu đạt sau khi cache offline không còn và chuyển sang `npx --yes ai-devkit@latest lint`. Không có request metadata/audio mới.
+
+
+### FE04 — preview (2026-09-18)
+
+4 test mới fail trước implementation. Sau triển khai `.venv/bin/python -m unittest discover -s tests -v`: **86 tests OK**, exit 0 (TestClient ngoài sandbox). Bổ sung ca cùng ngày/uncertain rồi `.venv/bin/python -m unittest discover -s tests -p test_classification_preview.py -v`: **5 tests OK**, exit 0. Bao phủ CSV validation, source hash, metadata sai ID, manual conflict, guard, no mutation/overwrite và subprocess CLI. [Chi tiết](../implementation/CLASSIFICATION_PREVIEW.md). Không đổi web assets nên không chạy lại browser.
+
+Kiểm chứng cuối cùng: `.venv/bin/python -m unittest discover -s tests -q` → **87 tests OK**, exit 0. Đối chiếu artifact xác nhận đủ 12 ca nhạc đã biết trong 5 trang đầu được đề xuất chuyển; live DB vẫn 260 Nhạc/6.125 Còn lại.
+
+
+### FE04 — apply và live verification (2026-09-18)
+
+Đã có classification-apply transaction/kiểm tra snapshot, giữ override và khóa batch. Test fail trước code (thiếu apply/CLI), sau code **90 tests OK**, exit 0, `.venv/bin/python -m unittest discover -s tests -q` ngoài sandbox cho TestClient. `node --check src/auralytica/static/app.js` đạt. Áp dụng thật 18 thay đổi sau backup, kết quả 278 music/6107 rest; đối chiếu mọi bảng download và sửa tay cũ không thay đổi. [Chi tiết và artifact](../implementation/CLASSIFICATION_PREVIEW.md#áp-dụng-đã-triển-khai-và-chạy-thành-công). Không chạy lại Chromium; UI chỉ thêm hai tên lý do.

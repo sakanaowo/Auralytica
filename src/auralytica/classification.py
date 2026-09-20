@@ -4,14 +4,15 @@ import json
 import re
 
 from .storage import get_setting, transaction, assert_review_unlocked
+from .audit import start_run, record_event, finish_run
 
-RULE_VERSION = 'rules-v1'
+RULE_VERSION = 'rules-v2-applied-metadata'
 TOPIC = re.compile(r'\S.*\s[-–—]\s*topic\s*$', re.I)
 MUSIC = re.compile(r'(?<!\w)(?:amv|ost|cover|remix|bgm|music|instrumental|piano|slowed|reverb)(?!\w)|nhạc|歌ってみた|カバー|노래', re.I)
 TALK = re.compile(r'(?<!\w)(?:podcast|interview|gameplay|walkthrough|vlog|reaction|tutorial)(?!\w)|phỏng vấn|hướng dẫn', re.I)
 
 
-def suggest(*, title='', channel_name='', metadata=None, watch_count=0, channel_decision=None):
+def suggest(*, title='', channel_name='', metadata=None, watch_count=0, watch_days=0, channel_decision=None):
     metadata = metadata or {}
     evidence = []
 
@@ -52,25 +53,49 @@ def suggest(*, title='', channel_name='', metadata=None, watch_count=0, channel_
         group, reason = 'music', 'topic_channel' if topic else 'music_library'
     elif hint:
         reason = 'music_hint'
+    applied = metadata.get('applied_music_evidence', {})
+    if (group == 'rest' and reason in {'unknown','music_hint'} and not channel_decision
+            and not re.search(r'#shorts?\b|\bhow to\b|\blesson\b',title,re.I)):
+        typ = applied.get('music_video_type')
+        if applied.get('metadata_exact') is True:
+            if typ in {'MUSIC_VIDEO_TYPE_ATV','MUSIC_VIDEO_TYPE_OMV','MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC'}:
+                group,reason = 'music','ytmusic_strong'
+            elif typ == 'MUSIC_VIDEO_TYPE_UGC' and watch_days >= 3:
+                group,reason = 'music','ytmusic_ugc_recurrence'
+            if group == 'music':
+                add(reason,'approved_local_preview',observation=applied)
     return dict(group=group, reason=reason, evidence=evidence)
 
 
 def classify_import(db, import_id):
     """Update suggestions within the caller's transaction; never write user_group."""
     rows = db.execute(
-        'SELECT v.*, COUNT(*) AS watch_count FROM videos v JOIN watch_events e ON e.video_id=v.id '
+        'SELECT v.*, COUNT(*) AS watch_count, COUNT(DISTINCT date(e.watched_at)) AS watch_days FROM videos v JOIN watch_events e ON e.video_id=v.id '
         'WHERE e.import_id=? GROUP BY v.id', (import_id,)
     ).fetchall()
     channels = {row['channel_key']: dict(row) for row in db.execute('SELECT * FROM channel_decisions')}
+    run_id = start_run(db, 'classification', import_id, RULE_VERSION, {'feature_version':'rules-v1-inputs'})
     counts = {'music': 0, 'rest': 0}
+    source_hash = db.execute('SELECT source_hash FROM imports WHERE id=?',(import_id,)).fetchone()[0]
     for row in rows:
+        metadata = json.loads(row['metadata_json'])
         result = suggest(title=row['title'], channel_name=row['channel_name'],
-                         metadata=json.loads(row['metadata_json']), watch_count=row['watch_count'],
+                         metadata=metadata, watch_count=row['watch_count'], watch_days=row['watch_days'],
                          channel_decision=channels.get(row['channel_key']))
+        record_event(db, 'classification_decided', dict(
+            rule_version=RULE_VERSION,
+            features=dict(title=row['title'], channel_name=row['channel_name'],
+                          metadata=metadata, watch_count=row['watch_count'], watch_days=row['watch_days'],
+                          channel_decision=channels.get(row['channel_key'])),
+            before_group=row['auto_group'], before_reason=row['auto_reason'],
+            after_group=result['group'], after_reason=result['reason'], evidence=result['evidence'],
+            user_group=row['user_group'], effective_group=row['user_group'] or result['group'],
+        ), run_id=run_id, video_id=row['id'])
         db.execute('UPDATE videos SET auto_group=?, auto_reason=?, evidence_json=? WHERE id=?',
                    (result['group'], result['reason'], json.dumps(result['evidence'], ensure_ascii=False), row['id']))
         counts[row['user_group'] or result['group']] += 1
-    return dict(rule_version=RULE_VERSION, counts=counts)
+    finish_run(db, run_id, 'completed', counts=counts)
+    return dict(rule_version=RULE_VERSION, counts=counts, run_id=run_id)
 
 
 def classify_active(db):
