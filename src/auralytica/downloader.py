@@ -1,10 +1,10 @@
-"""Sequential audio worker with resumable staging and process cancellation."""
-
+import errno
 import json
 import os
 from pathlib import Path
 import re
 import selectors
+import shutil
 import signal
 import subprocess
 import sys
@@ -12,6 +12,7 @@ import tempfile
 from contextlib import suppress
 
 from .batches import get_batch, worker_session, _completed_file
+from .converter import clean_title, convert_audio_file, parse_artist_title
 from .storage import get_setting, set_setting, transaction
 
 
@@ -95,11 +96,24 @@ def request_stop(db, batch_id):
         return get_batch(db, batch_id)
 
 
-def _publish(db, batch_id, item, staged, output):
+def _publish(db, batch_id, item, staged, output, clean_names=False, metadata=None):
     """Link without overwrite. Persist the planned path before publishing for recovery."""
-    stem = re.sub(r'[^\w\s.-]', '', item['title'], flags=re.UNICODE)
-    stem = re.sub(r'\s+', ' ', stem).strip(' .')[:80] or 'Audio'
-    stem += f" [{item['video_id']}]"
+    metadata = metadata or {}
+    if clean_names:
+        raw_title = metadata.get('title') or item['title'] or 'Audio'
+        clean_stem = clean_title(raw_title, strip_video_id=True, clean_youtube_tags=True)
+        raw_artist = metadata.get('artist') or item['channel_name'] or ''
+        if raw_artist:
+            raw_artist = re.sub(r'\s*-\s*Topic\s*$', '', raw_artist, flags=re.IGNORECASE).strip()
+        artist, title = parse_artist_title(clean_stem, raw_artist)
+        if artist and title and ' - ' not in clean_stem:
+            clean_stem = f"{artist} - {title}"
+        stem = re.sub(r'[/\\:*?"<>|]', '', clean_stem).strip(' .')[:120] or 'Audio'
+    else:
+        stem = re.sub(r'[^\w\s.-]', '', item['title'], flags=re.UNICODE)
+        stem = re.sub(r'\s+', ' ', stem).strip(' .')[:80] or 'Audio'
+        stem += f" [{item['video_id']}]"
+
     previous = item['file_path']
     if previous:
         previous = Path(previous)
@@ -118,6 +132,12 @@ def _publish(db, batch_id, item, staged, output):
             return path
         except FileExistsError:
             number += 1
+        except OSError as exc:
+            if exc.errno == errno.EEXIST:
+                number += 1
+                continue
+            shutil.copyfile(staged, path)
+            return path
 
 
 def run_batch(db, batch_id, *, adapter=None):
@@ -125,7 +145,11 @@ def run_batch(db, batch_id, *, adapter=None):
     with worker_session(db, batch_id) as batch:
         output = Path(batch['output_dir'])
         stopped = lambda: get_setting(db, 'stop_requested_batch') == str(batch_id)
-        items = db.execute('SELECT d.*,v.title FROM download_items d JOIN videos v ON v.id=d.video_id '
+        format_type = get_setting(db, f'batch_format:{batch_id}') or 'raw'
+        clean_names = get_setting(db, f'batch_clean_names:{batch_id}') == '1'
+        embed_metadata = get_setting(db, f'batch_embed_metadata:{batch_id}') != '0'
+
+        items = db.execute('SELECT d.*,v.title,v.channel_name FROM download_items d JOIN videos v ON v.id=d.video_id '
                            'WHERE d.batch_id=? ORDER BY d.video_id', (batch_id,)).fetchall()
         interrupted = False
         try:
@@ -134,7 +158,8 @@ def run_batch(db, batch_id, *, adapter=None):
             for item in items:
                 if stopped(): break
                 video_id = item['video_id']
-                previous = _completed_file(db, video_id, output)
+                target_ext = ('.mp3' if format_type == 'mp3' else '.m4a') if format_type in ('m4a_alac', 'm4a_aac', 'mp3') else None
+                previous = _completed_file(db, video_id, output, target_ext=target_ext)
                 if previous:
                     if item['status'] not in {'completed', 'skipped'}:
                         db.execute("UPDATE download_items SET status='skipped',file_path=?,file_size=? WHERE batch_id=? AND video_id=?",
@@ -159,12 +184,56 @@ def run_batch(db, batch_id, *, adapter=None):
                         or not re.fullmatch(r'\.[a-zA-Z0-9]{1,10}', staged.suffix)
                         or staged.suffix in {'.part','.ytdl'} or staged.stat().st_size <= 0):
                         raise DownloadFailure('invalid_output','File trả về không phải audio hoàn tất của video đã chọn.')
-                    final = _publish(db, batch_id, item, staged, output)
+
+                    final_staged = staged
+                    if format_type in ('m4a_alac', 'm4a_aac', 'mp3'):
+                        target_ext_file = '.mp3' if format_type == 'mp3' else '.m4a'
+                        transcoded_path = directory / f'transcoded{target_ext_file}'
+                        thumb = result.get('thumbnail_path') if embed_metadata else None
+                        raw_title = result.get('title') or item['title'] or ''
+                        clean_stem = clean_title(raw_title, strip_video_id=True, clean_youtube_tags=True) if clean_names else raw_title
+                        raw_artist = result.get('artist') or item['channel_name'] or ''
+                        if raw_artist:
+                            raw_artist = re.sub(r'\s*-\s*Topic\s*$', '', raw_artist, flags=re.IGNORECASE).strip()
+                        if clean_names:
+                            tag_artist, tag_title = parse_artist_title(clean_stem, raw_artist)
+                        else:
+                            tag_title = raw_title
+                            tag_artist = raw_artist
+                        tag_album = result.get('album') or 'Auralytica'
+                        tag_year = str(result.get('release_year') or '') or None
+
+                        try:
+                            convert_audio_file(
+                                source_path=staged,
+                                target_path=transcoded_path,
+                                format_type=format_type,
+                                thumbnail_path=thumb,
+                                artist=tag_artist if embed_metadata else '',
+                                title=tag_title if embed_metadata else '',
+                                album=tag_album if embed_metadata else '',
+                                year=tag_year if embed_metadata else None,
+                            )
+                            final_staged = transcoded_path
+                        except Exception as exc:
+                            raise DownloadFailure('transcode_error', f'Chuyển đổi âm thanh thất bại: {exc}')
+
+                    meta = {
+                        'title': result.get('title') or item['title'],
+                        'artist': result.get('artist') or item['channel_name'],
+                    }
+                    final = _publish(db, batch_id, item, final_staged, output, clean_names, meta)
                     size = final.stat().st_size
                     db.execute("UPDATE download_items SET status='completed',file_path=?,file_size=?,downloaded_bytes=?,total_bytes=? WHERE batch_id=? AND video_id=?",
                                (str(final), size, size, size, batch_id, video_id))
                     with suppress(OSError):
                         staged.unlink()  # Cleanup cannot invalidate the published file.
+                    if final_staged != staged:
+                        with suppress(OSError):
+                            final_staged.unlink()
+                    if result.get('thumbnail_path'):
+                        with suppress(OSError):
+                            Path(result['thumbnail_path']).unlink()
                 except DownloadStopped:
                     interrupted = True
                     break

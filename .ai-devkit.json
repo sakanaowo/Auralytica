@@ -1,9 +1,9 @@
 {
   "version": "0.61.0",
   "environments": [
-    "claude",
+    "gemini",
     "codex",
-    "antigravity-cli"
+    "antigravity"
   ],
   "phases": [
     "requirements",

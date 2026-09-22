@@ -6,7 +6,7 @@ import hashlib
 import json
 import sqlite3
 import tempfile
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
@@ -16,7 +16,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers, UploadFile
 
 from . import download_controls as downloads
-from . import dedup, enrichment, metadata
+from . import converter, dedup, enrichment, metadata
 from .importer import import_folder
 from .explore import summary as explore_summary
 from .review import list_videos, move_videos
@@ -107,6 +107,9 @@ class DownloadRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     output_dir: str = Field(min_length=1, max_length=4096)
     preview_token: str = Field(min_length=64, max_length=64, pattern=r'^[0-9a-f]{64}$')
+    format: Literal['m4a_alac', 'm4a_aac', 'mp3', 'raw'] = 'raw'
+    clean_names: bool = False
+    embed_metadata: bool = False
 
 
 class MetadataRunRequest(BaseModel):
@@ -139,6 +142,25 @@ class GroupSelectionRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     keep: bool
     expected_revision: int = Field(ge=0)
+
+
+class ConverterStartRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    directory: str = Field(min_length=1, max_length=4096)
+    output_dir: str = Field(min_length=1, max_length=4096)
+    format: Literal['m4a_alac', 'm4a_aac', 'mp3'] = 'm4a_alac'
+    remove_source: bool = False
+    items: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class RenameItem(BaseModel):
+    source_path: str
+    new_name: str
+
+
+class RenameRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    items: list[RenameItem] = Field(min_length=1, max_length=5000)
 
 
 def _import_uploads(database, uploads):
@@ -214,6 +236,7 @@ def create_app(database: str | Path, *, port=8765, max_body_bytes=64 * 1024 * 10
     @app.get('/explore')
     @app.get('/deduplicate')
     @app.get('/download')
+    @app.get('/convert')
     def workflow_page():
         return FileResponse(static / 'index.html')
 
@@ -392,16 +415,31 @@ def create_app(database: str | Path, *, port=8765, max_body_bytes=64 * 1024 * 10
             return downloads.list_batches(db)
 
     @app.get('/api/downloads/{batch_id}')
-    def download_status(batch_id: int, page: Annotated[int, Query(ge=1)] = 1,
+    def download_status(batch_id: int,
+                        status: Annotated[str | None, Query(pattern=r'^(all|queued|running|completed|failed|skipped)$')] = None,
+                        page: Annotated[int, Query(ge=1)] = 1,
                         page_size: Annotated[int, Query(ge=1, le=1000)] = 50):
         with closing(open_database(database)) as db:
-            return downloads.batch_status(db, batch_id, page=page, page_size=page_size)
+            return downloads.batch_status(db, batch_id, page=page, page_size=page_size, status=status)
+
+    @app.post('/api/downloads/{batch_id}/retry-failed')
+    def download_retry_failed(batch_id: int):
+        with closing(open_database(database)) as db:
+            return downloads.retry_failed(db, database, batch_id=batch_id, launcher=app.state.launch_worker)
+
+    @app.post('/api/downloads/{batch_id}/items/{video_id}/retry')
+    def download_retry_item(batch_id: int, video_id: VideoID):
+        with closing(open_database(database)) as db:
+            return downloads.retry_item(db, database, batch_id=batch_id, video_id=video_id, launcher=app.state.launch_worker)
 
     @app.post('/api/downloads')
     def download_start(payload: DownloadRequest):
         with closing(open_database(database)) as db:
             return downloads.start_download(db, database, output_dir=payload.output_dir,
                                             preview_token=payload.preview_token,
+                                            format_type=payload.format,
+                                            clean_names=payload.clean_names,
+                                            embed_metadata=payload.embed_metadata,
                                             launcher=app.state.launch_worker)
 
     @app.post('/api/downloads/{batch_id}/stop')
@@ -413,5 +451,45 @@ def create_app(database: str | Path, *, port=8765, max_body_bytes=64 * 1024 * 10
     def download_resume(batch_id: int):
         with closing(open_database(database)) as db:
             return downloads.start_download(db, database, batch_id=batch_id, launcher=app.state.launch_worker)
+
+    @app.get('/api/converter/scan')
+    def converter_scan(directory: Annotated[str | None, Query(max_length=4096)] = None):
+        target_dir = directory
+        if not target_dir:
+            with closing(open_database(database)) as db:
+                row = db.execute("SELECT output_dir FROM download_batches ORDER BY id DESC LIMIT 1").fetchone()
+                if row:
+                    target_dir = row[0]
+                else:
+                    target_dir = '~/Music/Auralytica'
+        return converter.scan_directory(database, target_dir)
+
+    @app.post('/api/converter/start')
+    def converter_start(payload: ConverterStartRequest):
+        items = payload.items
+        if not items:
+            scan_res = converter.scan_directory(database, payload.directory)
+            items = scan_res['items']
+        if not items:
+            raise HTTPException(400, 'Không tìm thấy file nào để chuyển đổi.')
+        return converter.conversion_manager.start_conversion(
+            items,
+            payload.output_dir,
+            format_type=payload.format,
+            remove_source=payload.remove_source,
+        )
+
+    @app.get('/api/converter/status')
+    def converter_status():
+        return converter.conversion_manager.get_status()
+
+    @app.post('/api/converter/stop')
+    def converter_stop():
+        return converter.conversion_manager.stop()
+
+    @app.post('/api/converter/rename')
+    def converter_rename(payload: RenameRequest):
+        renames = [(it.source_path, it.new_name) for it in payload.items]
+        return {'results': converter.rename_files_in_place(renames)}
 
     return app

@@ -1,8 +1,8 @@
 # Auralytica — Project Dashboard
 
-Cập nhật: **2026-09-20 · WFT01–WFT09 done trong worktree feature-web-workflow. 116 core/API + 10 Chromium + 7 research + 2 research-browser tests đạt; review cuối không còn finding chặn.**
+Cập nhật: **2026-09-20 · Bắt đầu feature-frontend-redesign trong worktree .worktrees/feature-frontend-redesign. Requirements, Design, Planning và Testing docs đã hoàn tất (lint OK). Bắt đầu Milestone 1.**
 
-> Mục tiêu mới: Import Takeout → Explore nhóm nhạc → Deduplicate các video cùng bài → Download các bản được giữ. Các mốc CLI/MVP bên dưới là lịch sử triển khai.
+> Mục tiêu mới: Tái thiết kế Frontend theo phong cách Apple Pro Liquid Glass (React 19 + Vite + Tailwind CSS), Explore Dual-Pane 50/50, 1-Click Select trên thẻ bài hát, loại bỏ hoàn toàn sticker/icon rườm rà.
 
 Đây là dashboard Markdown theo dõi dự án, cập nhật thủ công khi có thay đổi; không phải tính năng dashboard phân tích trong ứng dụng.
 
@@ -301,3 +301,13 @@ Download dùng đúng tập Nhạc được giữ sau Deduplicate, độc lập 
 [Review cuối](docs/ai/testing/WFT09_FINAL_REVIEW.md) đạt: **116 core/API + 10 Chromium + 7 research + 2 research-browser tests**; wheel, lint, JS, bytecode và diff checks đều đạt. Database copy giữ manual label/download/selection; code schema cũ từ chối schema mới mà không ghi. Fixture 7.500 video đạt benchmark phân trang; bộ nhãn độc lập 16 video cho precision/recall 0,80/0,80 trong phạm vi gợi ý tổng hợp, không phải accuracy production.
 
 Security review sửa log yt-dlp để không lưu exception thô, signed URL hoặc token. Không có finding chặn; không commit/push và không sửa live database.
+
+## Frontend Redesign — FE-01 đến FE-05 hoàn thành (2026-09-20)
+
+Đã chuyển đổi toàn bộ giao diện sang kiến trúc **React 19 + Vite + Tailwind CSS v4 + TanStack Query** trong thư mục `frontend/`, đóng gói tĩnh trực tiếp vào `src/auralytica/static/`:
+- **Thẩm mỹ Apple Pro Liquid Glass:** Gam màu tối trung tính (Dark Zinc `#09090b`), viền kính mờ sắc sảo 1px, loại bỏ hoàn toàn các emoji/sticker trang trí, điều khiển text-driven trực quan.
+- **Explore Dual-Pane 50/50:** Chia đôi màn hình song song giữa Nhạc đã nhận diện và Còn lại. Thẻ bài hát có thumbnail 16:9 sắc nét, cơ chế **1-click select** (bấm thẳng vào thẻ để chọn) và nút chuyển nhanh khi hover.
+- **Modal Metadata & Phân loại:** Mở hộp thoại kính mờ riêng biệt để lấy metadata YouTube Music và xem trước bảng phân loại, không choán diện tích 2 cột duyệt bài.
+- **Import, Deduplicate & Download:** Đã tái thiết kế đồng bộ theo phong cách tối giản cao cấp.
+- **Kiểm thử & Đóng gói:** `npm run build` hoàn tất trong ~700ms; **116/116 unit tests của backend đạt 100% OK**; wheel build đóng gói đầy đủ bundle mới.
+
