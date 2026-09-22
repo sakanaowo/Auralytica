@@ -61,9 +61,13 @@ def launch_worker(database, batch_id):
     threading.Thread(target=process.wait, daemon=True).start()
 
 
-def start_download(db, database, *, output_dir=None, preview_token=None, batch_id=None, launcher=launch_worker):
+def start_download(db, database, *, output_dir=None, preview_token=None, batch_id=None,
+                   format_type='raw', clean_names=False, embed_metadata=False,
+                   launcher=launch_worker):
     if batch_id is None:
-        batch = create_batch(db, output_dir, expected_token=preview_token)
+        batch = create_batch(db, output_dir, expected_token=preview_token,
+                             format_type=format_type, clean_names=clean_names,
+                             embed_metadata=embed_metadata)
     else:
         current = get_batch(db, batch_id)
         if current['status'] == 'running':

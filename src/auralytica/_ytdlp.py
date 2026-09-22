@@ -83,7 +83,11 @@ def main():
         'logger': QuietLogger(),
         'progress_hooks': [progress],
         'outtmpl': str(Path(directory) / 'audio.%(ext)s'),
-        'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'best'}],
+        'writethumbnail': True,
+        'postprocessors': [
+            {'key': 'FFmpegExtractAudio', 'preferredcodec': 'best'},
+            {'key': 'FFmpegThumbnailsConvertor', 'format': 'jpg'},
+        ],
         'continuedl': True,
         'nopart': False,
         'overwrites': False,
@@ -107,13 +111,30 @@ def main():
             actual_path = downloaded.get('filepath') or ydl.prepare_filename(info)
             if not Path(actual_path).is_file():
                 matches = [f for f in Path(directory).iterdir()
-                           if f.is_file() and f.name.startswith('audio.') and not f.name.endswith(('.part', '.ytdl'))]
+                           if f.is_file() and f.name.startswith('audio.') and not f.name.endswith(('.part', '.ytdl', '.jpg', '.jpeg', '.png', '.webp'))]
                 if matches:
                     actual_path = str(matches[0])
+
+            # Detect downloaded thumbnail file
+            thumbnail_path = None
+            for p in Path(directory).iterdir():
+                if p.is_file() and p.stem.startswith('audio') and p.suffix.lower() in ('.jpg', '.jpeg', '.png', '.webp'):
+                    thumbnail_path = str(p)
+                    break
+
+            uploader = info.get('uploader') or info.get('channel') or ''
+            if uploader:
+                uploader = re.sub(r'\s*-\s*Topic\s*$', '', uploader, flags=re.IGNORECASE).strip()
+
             emit({
                 'type': 'result',
                 'id': info['id'],
                 'path': actual_path,
+                'thumbnail_path': thumbnail_path,
+                'title': info.get('title') or '',
+                'artist': info.get('artist') or uploader,
+                'album': info.get('album') or '',
+                'release_year': (info.get('release_year') or (info.get('upload_date')[:4] if info.get('upload_date') else None)),
                 'acodec': downloaded.get('acodec') or info.get('acodec') or 'unknown',
                 'vcodec': 'none',
             })

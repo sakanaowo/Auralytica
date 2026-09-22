@@ -194,3 +194,22 @@ class DownloadControlTests(unittest.TestCase):
             self.assertEqual(item['status'], 'queued')
             self.assertIsNone(item['error_code'])
 
+    def test_start_download_with_format_and_clean_names_payload(self):
+        token = self.client.get('/api/downloads/preview', params={'output_dir': str(self.output)}).json()['token']
+        res = self.post('/api/downloads', {
+            'output_dir': str(self.output),
+            'preview_token': token,
+            'format': 'm4a_alac',
+            'clean_names': True,
+            'embed_metadata': True,
+        })
+        self.assertEqual(res.status_code, 200, res.text)
+        batch = res.json()
+        self.assertEqual(batch['format'], 'm4a_alac')
+        self.assertTrue(batch['clean_names'])
+        self.assertTrue(batch['embed_metadata'])
+        status = self.client.get(f"/api/downloads/{batch['batch_id']}").json()
+        self.assertEqual(status['format'], 'm4a_alac')
+        self.assertTrue(status['clean_names'])
+        self.assertTrue(status['embed_metadata'])
+

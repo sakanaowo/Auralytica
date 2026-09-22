@@ -15,7 +15,11 @@ def get_batch(db, batch_id):
     if row is None:
         raise ValueError('Không tìm thấy batch.')
     counts = dict(db.execute('SELECT status,COUNT(*) FROM download_items WHERE batch_id=? GROUP BY status', (batch_id,)))
+    fmt = get_setting(db, f'batch_format:{batch_id}') or 'raw'
+    clean = get_setting(db, f'batch_clean_names:{batch_id}') == '1'
+    embed = get_setting(db, f'batch_embed_metadata:{batch_id}') != '0'
     return dict(batch_id=row['id'], output_dir=row['output_dir'], status=row['status'],
+                format=fmt, clean_names=clean, embed_metadata=embed,
                 total=sum(counts.values()), queued=counts.get('queued', 0),
                 skipped=counts.get('skipped', 0), counts=counts)
 
@@ -24,21 +28,25 @@ def _active(db):
     return db.execute("SELECT id FROM download_batches WHERE status IN ('queued','running') ORDER BY id LIMIT 1").fetchone()
 
 
-def _valid_file(file_path, file_size, output):
+def _valid_file(file_path, file_size, output, target_ext=None):
     if not file_path or file_size is None or file_size <= 0:
         return False
     try:
         path = Path(file_path).resolve()
-        return path.parent == output and path.is_file() and path.stat().st_size == file_size
+        if path.parent != output or not path.is_file() or path.stat().st_size != file_size:
+            return False
+        if target_ext is not None and path.suffix.lower() != target_ext.lower():
+            return False
+        return True
     except OSError:
         return False
 
 
-def _completed_file(db, video_id, output):
+def _completed_file(db, video_id, output, target_ext=None):
     rows = db.execute("SELECT d.file_path,d.file_size FROM download_items d JOIN download_batches b ON b.id=d.batch_id "
                       "WHERE d.video_id=? AND d.status IN ('completed','skipped') AND b.output_dir=? ORDER BY d.batch_id DESC",
                       (video_id, str(output)))
-    return next((row for row in rows if _valid_file(row['file_path'], row['file_size'], output)), None)
+    return next((row for row in rows if _valid_file(row['file_path'], row['file_size'], output, target_ext)), None)
 
 
 def eligible_snapshot(db, output_dir):
@@ -97,7 +105,7 @@ def eligible_snapshot(db, output_dir):
     }
 
 
-def create_batch(db, output_dir, *, expected_token=None):
+def create_batch(db, output_dir, *, expected_token=None, format_type='raw', clean_names=False, embed_metadata=False):
     """Snapshot all kept music, independent of any UI filters or pagination."""
     with transaction(db):
         active = _active(db)
@@ -114,6 +122,9 @@ def create_batch(db, output_dir, *, expected_token=None):
         with tempfile.TemporaryFile(dir=output):
             pass  # Check actual write permission rather than os.access().
         batch_id = db.execute('INSERT INTO download_batches(output_dir) VALUES (?)', (str(output),)).lastrowid
+        set_setting(db, f'batch_format:{batch_id}', format_type)
+        set_setting(db, f'batch_clean_names:{batch_id}', '1' if clean_names else '0')
+        set_setting(db, f'batch_embed_metadata:{batch_id}', '1' if embed_metadata else '0')
         queued = 0
         for video_id in ids:
             # Recheck immediately before persisting: a valid preview file may have

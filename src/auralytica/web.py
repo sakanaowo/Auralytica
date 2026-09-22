@@ -107,6 +107,9 @@ class DownloadRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     output_dir: str = Field(min_length=1, max_length=4096)
     preview_token: str = Field(min_length=64, max_length=64, pattern=r'^[0-9a-f]{64}$')
+    format: Literal['m4a_alac', 'm4a_aac', 'mp3', 'raw'] = 'raw'
+    clean_names: bool = False
+    embed_metadata: bool = False
 
 
 class MetadataRunRequest(BaseModel):
@@ -434,6 +437,9 @@ def create_app(database: str | Path, *, port=8765, max_body_bytes=64 * 1024 * 10
         with closing(open_database(database)) as db:
             return downloads.start_download(db, database, output_dir=payload.output_dir,
                                             preview_token=payload.preview_token,
+                                            format_type=payload.format,
+                                            clean_names=payload.clean_names,
+                                            embed_metadata=payload.embed_metadata,
                                             launcher=app.state.launch_worker)
 
     @app.post('/api/downloads/{batch_id}/stop')

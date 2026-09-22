@@ -175,10 +175,15 @@ export interface DownloadBatchItem {
   error_message?: string | null;
 }
 
+export type AudioFormat = 'm4a_alac' | 'm4a_aac' | 'mp3' | 'raw';
+
 export interface DownloadBatch {
   batch_id: number;
   status: 'queued' | 'running' | 'paused' | 'completed' | 'partial' | 'failed' | 'cancelled';
   output_dir: string;
+  format?: AudioFormat;
+  clean_names?: boolean;
+  embed_metadata?: boolean;
   total: number;
   queued?: number;
   skipped?: number;

@@ -181,27 +181,49 @@ def convert_audio_file(
     target_path: str | Path,
     *,
     format_type: str = 'm4a_alac',
+    thumbnail_path: str | Path | None = None,
     artist: str = '',
     title: str = '',
     album: str = 'Auralytica',
+    year: str | None = None,
 ) -> None:
-    """Convert an audio file using ffmpeg with metadata."""
+    """Convert an audio file using ffmpeg with metadata and optional cover art."""
     source = Path(source_path)
     target = Path(target_path)
     target.parent.mkdir(parents=True, exist_ok=True)
 
+    has_cover = False
+    if thumbnail_path and Path(thumbnail_path).is_file() and Path(thumbnail_path).stat().st_size > 0:
+        has_cover = True
+
     # Base ffmpeg command
-    cmd = ['ffmpeg', '-y', '-i', str(source), '-vn']
+    cmd = ['ffmpeg', '-y', '-i', str(source)]
+    if has_cover:
+        cmd.extend(['-i', str(thumbnail_path), '-map', '0:a', '-map', '1:v?'])
+    else:
+        cmd.extend(['-vn', '-map', '0:a?'])
 
     if format_type == 'm4a_alac':
         cmd.extend(['-c:a', 'alac'])
+        if has_cover:
+            cmd.extend(['-c:v', 'copy', '-disposition:v:0', 'attached_pic'])
     elif format_type == 'm4a_aac':
         cmd.extend(['-c:a', 'aac', '-b:a', '256k'])
+        if has_cover:
+            cmd.extend(['-c:v', 'copy', '-disposition:v:0', 'attached_pic'])
     elif format_type == 'mp3':
         cmd.extend(['-c:a', 'libmp3lame', '-b:a', '320k'])
+        if has_cover:
+            cmd.extend([
+                '-c:v', 'copy', '-id3v2_version', '3',
+                '-metadata:s:v', 'title=Album cover',
+                '-metadata:s:v', 'comment=Cover (front)',
+            ])
     else:
         # Default to alac
         cmd.extend(['-c:a', 'alac'])
+        if has_cover:
+            cmd.extend(['-c:v', 'copy', '-disposition:v:0', 'attached_pic'])
 
     # Metadata flags
     if title:
@@ -210,6 +232,8 @@ def convert_audio_file(
         cmd.extend(['-metadata', f'artist={artist}'])
     if album:
         cmd.extend(['-metadata', f'album={album}'])
+    if year:
+        cmd.extend(['-metadata', f'date={year}'])
 
     cmd.append(str(target))
 

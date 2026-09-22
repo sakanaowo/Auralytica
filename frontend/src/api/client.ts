@@ -9,6 +9,7 @@ import {
   DedupListResponse,
   DownloadPreviewData,
   DownloadBatch,
+  AudioFormat,
   ConverterScanResponse,
   ConverterStatus,
   ConverterStartPayload,
@@ -160,11 +161,23 @@ export const api = {
   retryDownloadItem: (batchId: number, videoId: string) =>
     request<DownloadBatch>(`/api/downloads/${batchId}/items/${videoId}/retry`, { method: 'POST' }),
 
-  startDownload: (outputDir: string, previewToken: string) =>
+  startDownload: (
+    outputDir: string,
+    previewToken: string,
+    format: AudioFormat = 'm4a_alac',
+    cleanNames: boolean = true,
+    embedMetadata: boolean = true
+  ) =>
     request<DownloadBatch>('/api/downloads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ output_dir: outputDir, preview_token: previewToken }),
+      body: JSON.stringify({
+        output_dir: outputDir,
+        preview_token: previewToken,
+        format,
+        clean_names: cleanNames,
+        embed_metadata: embedMetadata,
+      }),
     }),
 
   stopDownload: (batchId: number) =>

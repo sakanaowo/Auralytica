@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
-import { DownloadBatch, DownloadBatchItem } from '../../api/types';
+import { DownloadBatch, DownloadBatchItem, AudioFormat } from '../../api/types';
 
 interface DownloadViewProps {
   batchLocked: boolean;
@@ -99,12 +99,41 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [inspectItem, setInspectItem] = useState<DownloadBatchItem | null>(null);
 
-  // Save outputDir to local storage
+  const [format, setFormat] = useState<AudioFormat>(() => {
+    try {
+      return (localStorage.getItem('auralytica-format') as AudioFormat) || 'm4a_alac';
+    } catch {
+      return 'm4a_alac';
+    }
+  });
+
+  const [cleanNames, setCleanNames] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('auralytica-clean-names');
+      return v !== null ? v === '1' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const [embedMetadata, setEmbedMetadata] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('auralytica-embed-metadata');
+      return v !== null ? v === '1' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  // Save settings to local storage
   useEffect(() => {
     try {
       localStorage.setItem('auralytica-output', outputDir);
+      localStorage.setItem('auralytica-format', format);
+      localStorage.setItem('auralytica-clean-names', cleanNames ? '1' : '0');
+      localStorage.setItem('auralytica-embed-metadata', embedMetadata ? '1' : '0');
     } catch {}
-  }, [outputDir]);
+  }, [outputDir, format, cleanNames, embedMetadata]);
 
   // Fetch preview
   const previewQuery = useQuery({
@@ -144,7 +173,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
     mutationFn: () => {
       const token = previewQuery.data?.token;
       if (!token) throw new Error('Chưa có preview token hợp lệ.');
-      return api.startDownload(outputDir.trim(), token);
+      return api.startDownload(outputDir.trim(), token, format, cleanNames, embedMetadata);
     },
     onSuccess: (data) => {
       setSelectedBatchId(data.batch_id);
@@ -277,6 +306,104 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
           )}
         </div>
 
+        {/* Audio Pipeline Settings */}
+        <div className="pt-3 border-t border-white/5 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+              Định dạng âm thanh xuất xưởng
+            </span>
+            <span className="text-[11px] text-zinc-500 font-mono">
+              In-stream FFmpeg Pipeline
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            {[
+              {
+                id: 'm4a_alac',
+                name: 'M4A ALAC Lossless',
+                badge: 'Apple Music',
+                desc: 'Lossless bit-perfect từ nguồn Opus; tương thích tối đa Apple Music.',
+              },
+              {
+                id: 'm4a_aac',
+                name: 'M4A AAC (256k)',
+                badge: 'Tiết kiệm bộ nhớ',
+                desc: 'AAC chất lượng cao, nạp trực tiếp vào Apple Music / iTunes.',
+              },
+              {
+                id: 'mp3',
+                name: 'MP3 (320k)',
+                badge: 'Phổ thông',
+                desc: 'Định dạng tương thích mọi dòng máy nghe nhạc và hệ thống âm thanh.',
+              },
+              {
+                id: 'raw',
+                name: 'Nguyên bản (Raw)',
+                badge: 'Gốc YouTube',
+                desc: 'Giữ nguyên codec gốc từ YouTube không qua transcode.',
+              },
+            ].map((fmt) => (
+              <button
+                key={fmt.id}
+                type="button"
+                disabled={batchLocked}
+                onClick={() => setFormat(fmt.id as AudioFormat)}
+                className={`text-left p-3 rounded-xl border transition-all ${
+                  format === fmt.id
+                    ? 'bg-zinc-100 text-zinc-900 border-white shadow-lg shadow-white/5'
+                    : 'bg-zinc-950/40 text-zinc-300 border-white/5 hover:border-white/20 hover:bg-zinc-900/40'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-semibold text-xs">{fmt.name}</span>
+                  <span
+                    className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                      format === fmt.id
+                        ? 'bg-zinc-800 text-zinc-100'
+                        : 'bg-white/5 text-zinc-400'
+                    }`}
+                  >
+                    {fmt.badge}
+                  </span>
+                </div>
+                <p
+                  className={`text-[11px] leading-tight ${
+                    format === fmt.id ? 'text-zinc-600' : 'text-zinc-500'
+                  }`}
+                >
+                  {fmt.desc}
+                </p>
+              </button>
+            ))}
+          </div>
+
+          {/* Option toggles */}
+          <div className="flex flex-wrap items-center gap-6 pt-1 text-xs text-zinc-300">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={cleanNames}
+                onChange={(e) => setCleanNames(e.target.checked)}
+                disabled={batchLocked}
+                className="rounded border-zinc-700 bg-zinc-900 text-zinc-100 focus:ring-0 focus:ring-offset-0"
+              />
+              <span>Làm sạch tên file (Bỏ mã [video_id], lọc tags YouTube thừa)</span>
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={embedMetadata}
+                onChange={(e) => setEmbedMetadata(e.target.checked)}
+                disabled={batchLocked}
+                className="rounded border-zinc-700 bg-zinc-900 text-zinc-100 focus:ring-0 focus:ring-offset-0"
+              />
+              <span>Nhúng ảnh bìa bài hát (Cover Art) & siêu dữ liệu Tags</span>
+            </label>
+          </div>
+        </div>
+
         {errorMsg && (
           <div className="p-3 rounded-lg bg-red-950/40 border border-red-800/40 text-red-300 text-xs flex justify-between items-center">
             <span>{errorMsg}</span>
@@ -321,12 +448,22 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
               {/* Batch Meta & Actions */}
               <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-zinc-950/40 border border-white/5 text-xs">
                 <div>
-                  <div className="font-semibold text-zinc-200 flex items-center gap-2">
+                  <div className="font-semibold text-zinc-200 flex flex-wrap items-center gap-2">
                     <span>Lượt #{currentBatch.batch_id}</span>
                     <span className="text-zinc-500">·</span>
                     <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-zinc-800 text-zinc-300 border border-white/5">
                       {BATCH_STATUS_LABELS[currentBatch.status] || currentBatch.status}
                     </span>
+                    {currentBatch.format && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-white/5 text-zinc-300 border border-white/10 uppercase">
+                        {currentBatch.format}
+                      </span>
+                    )}
+                    {currentBatch.clean_names && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-sans bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                        Tên sạch
+                      </span>
+                    )}
                     {currentBatch.stop_requested && currentBatch.status === 'running' && (
                       <span className="text-amber-400 text-[11px]">(Đang yêu cầu dừng...)</span>
                     )}
