@@ -382,21 +382,23 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
               Lượt tải
             </h3>
 
-            <select
-              value={selectedBatchId ?? ''}
-              onChange={(e) => {
-                setSelectedBatchId(Number(e.target.value));
-                setBatchPage(1);
-                setStatusFilter('all');
-              }}
-              className="px-3 py-1.5 text-xs rounded-lg glass-input text-zinc-200 border border-white/10"
-            >
-              {batches.map((b) => (
-                <option key={b.batch_id} value={b.batch_id}>
-                  #{b.batch_id} · {BATCH_STATUS_LABELS[b.status] || b.status} · {b.total} video
-                </option>
-              ))}
-            </select>
+            {batches.length > 1 && (
+              <select
+                value={selectedBatchId ?? ''}
+                onChange={(e) => {
+                  setSelectedBatchId(Number(e.target.value));
+                  setBatchPage(1);
+                  setStatusFilter('all');
+                }}
+                className="px-3 py-1.5 text-xs rounded-lg glass-input text-zinc-200 border border-white/10 cursor-pointer"
+              >
+                {batches.map((b) => (
+                  <option key={b.batch_id} value={b.batch_id}>
+                    #{b.batch_id} · {BATCH_STATUS_LABELS[b.status] || b.status} · {b.total} video
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {currentBatch && (() => {
@@ -627,10 +629,10 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
                     </div>
 
                     {/* Items List Table */}
-                    <div className="overflow-hidden rounded-xl border border-white/5 bg-zinc-950/40">
+                    <div className="overflow-y-auto max-h-[380px] rounded-xl border border-white/10 bg-zinc-950/60 shadow-inner">
                       <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                          <tr className="border-b border-white/10 bg-zinc-900/60 text-zinc-400 font-mono text-xs">
+                        <thead className="sticky top-0 z-10 bg-zinc-900/95 backdrop-blur-md">
+                          <tr className="border-b border-white/10 text-zinc-400 font-mono text-xs">
                             <th className="p-3">Video</th>
                             <th className="p-3 w-36">Trạng thái</th>
                             <th className="p-3">Chẩn đoán / Chi tiết</th>
@@ -742,7 +744,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
 
                     {/* Pagination Footer */}
                     {totalPages > 1 && (
-                      <div className="p-3 border-t border-white/[0.06] flex items-center justify-between text-xs text-zinc-400">
+                      <div className="p-2.5 px-3.5 rounded-xl border border-white/5 bg-zinc-950/40 flex items-center justify-between text-xs text-zinc-400">
                         <span className="font-mono text-xs">
                           Trang {batchPage} / {totalPages} · {filteredTotal} bài
                         </span>
@@ -751,7 +753,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
                             type="button"
                             disabled={batchPage <= 1}
                             onClick={() => setBatchPage(batchPage - 1)}
-                            className="px-2.5 py-1 rounded bg-zinc-900 border border-white/5 text-zinc-300 hover:text-white disabled:opacity-40"
+                            className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-white/5 text-zinc-300 hover:text-white disabled:opacity-40 transition-colors"
                           >
                             ←
                           </button>
@@ -759,7 +761,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
                             type="button"
                             disabled={batchPage >= totalPages}
                             onClick={() => setBatchPage(batchPage + 1)}
-                            className="px-2.5 py-1 rounded bg-zinc-900 border border-white/5 text-zinc-300 hover:text-white disabled:opacity-40"
+                            className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-white/5 text-zinc-300 hover:text-white disabled:opacity-40 transition-colors"
                           >
                             →
                           </button>

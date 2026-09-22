@@ -57,11 +57,10 @@ export const AppShell: React.FC<AppShellProps> = ({
                 key={s.key}
                 type="button"
                 onClick={() => onNavigate(s.key)}
-                className={`px-3 py-1.5 text-xs rounded-lg transition-all select-none font-medium flex items-center gap-1.5 ${
-                  isActive
+                className={`px-3 py-1.5 text-xs rounded-lg transition-all select-none font-medium flex items-center gap-1.5 ${isActive
                     ? 'bg-zinc-800 text-zinc-100 border border-white/10 shadow-sm'
                     : 'text-zinc-400 hover:text-zinc-200'
-                }`}
+                  }`}
               >
                 <span className="text-xs font-mono text-zinc-500">{s.num}</span>
                 <span>{s.label}</span>
@@ -71,7 +70,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         </nav>
 
         {/* Status indicator on the right */}
-        <div className="flex items-center gap-3 shrink-0 text-xs text-zinc-400">
+        {/* <div className="flex items-center gap-3 shrink-0 text-xs text-zinc-400">
           {workflow ? (
             <div className="flex items-center gap-2">
               {workflow.batch_locked && (
@@ -90,14 +89,13 @@ export const AppShell: React.FC<AppShellProps> = ({
           ) : (
             <span className="text-xs text-zinc-500 font-mono">Đang kết nối...</span>
           )}
-        </div>
+        </div> */}
       </header>
 
       {/* Main Content Area */}
       <main
-        className={`relative z-10 flex-1 flex flex-col ${
-          currentStep === 'explore' ? 'h-[calc(100vh-61px)] overflow-hidden p-4' : 'p-6'
-        }`}
+        className={`relative z-10 flex-1 flex flex-col ${currentStep === 'explore' ? 'h-[calc(100vh-61px)] overflow-hidden p-4' : 'p-6'
+          }`}
       >
         {children}
       </main>
