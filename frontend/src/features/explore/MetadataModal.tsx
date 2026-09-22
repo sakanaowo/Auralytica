@@ -145,7 +145,7 @@ export const MetadataModal: React.FC<MetadataModalProps> = ({
           {/* Controls */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-xl bg-zinc-950/40 border border-white/5">
             <div>
-              <label className="block text-[11px] text-zinc-400 mb-1">Phạm vi</label>
+              <label className="block text-xs text-zinc-400 mb-1">Phạm vi</label>
               <select
                 value={group}
                 onChange={(e) => setGroup(e.target.value as any)}
@@ -158,7 +158,7 @@ export const MetadataModal: React.FC<MetadataModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-[11px] text-zinc-400 mb-1">Số lượng video</label>
+              <label className="block text-xs text-zinc-400 mb-1">Số lượng video</label>
               <input
                 type="number"
                 min={1}
@@ -177,14 +177,14 @@ export const MetadataModal: React.FC<MetadataModalProps> = ({
                   onChange={(e) => setRefresh(e.target.checked)}
                   className="rounded border-zinc-700 bg-zinc-900 text-zinc-100"
                 />
-                <span className="text-zinc-400 text-[11px]">Bỏ qua cache còn hạn</span>
+                <span className="text-zinc-400 text-xs">Bỏ qua cache còn hạn</span>
               </label>
             </div>
           </div>
 
           {/* Scope Info */}
           {scope && (
-            <div className="text-[11px] text-zinc-400 px-1">
+            <div className="text-xs text-zinc-400 px-1">
               Phạm vi: <strong className="text-zinc-200">{scope.selected}</strong> / {scope.available} video ·{' '}
               {scope.cached} cache còn hạn · {scope.stale} cache cũ.
             </div>
@@ -225,7 +225,7 @@ export const MetadataModal: React.FC<MetadataModalProps> = ({
 
           {/* Active Run Status */}
           {activeRun && (
-            <div className="p-3 rounded-xl bg-zinc-950/50 border border-white/5 font-mono text-[11px]">
+            <div className="p-3 rounded-xl bg-zinc-950/50 border border-white/5 font-mono text-xs">
               Trạng thái: <span className="text-zinc-200 uppercase">{activeRun.status}</span> · Đã xong:{' '}
               {activeRun.counts.done || 0}/{activeRun.total} · Lỗi: {activeRun.counts.failed || 0}
             </div>
@@ -238,7 +238,7 @@ export const MetadataModal: React.FC<MetadataModalProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <h4 className="text-xs font-semibold uppercase text-zinc-200">Xem trước phân loại</h4>
-                <p className="text-[11px] text-zinc-500">
+                <p className="text-xs text-zinc-500">
                   Tạo preview các đề xuất chuyển nhóm dựa trên metadata mới thu thập.
                 </p>
               </div>
@@ -268,14 +268,14 @@ export const MetadataModal: React.FC<MetadataModalProps> = ({
 
             {preview && (
               <div className="space-y-2">
-                <div className="text-[11px] text-zinc-400">
+                <div className="text-xs text-zinc-400">
                   Có <strong className="text-zinc-200">{preview.changed}</strong> thay đổi đề xuất trên tổng số{' '}
                   {preview.items.length} video có metadata. Nhãn thủ công luôn được bảo toàn.
                 </div>
 
                 {preview.changed > 0 && (
                   <div className="max-h-48 overflow-y-auto rounded-lg border border-white/5 bg-zinc-950/40">
-                    <table className="w-full text-left border-collapse text-[11px]">
+                    <table className="w-full text-left border-collapse text-xs">
                       <thead>
                         <tr className="border-b border-white/10 bg-zinc-900/60 text-zinc-400 font-mono">
                           <th className="p-2">Video</th>

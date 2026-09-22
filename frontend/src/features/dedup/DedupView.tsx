@@ -90,24 +90,29 @@ export const DedupView: React.FC<DedupViewProps> = ({ onNavigateDownload }) => {
   const maxPage = Math.max(1, Math.ceil(totalGroups / 20));
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
+    <div className="max-w-7xl w-full mx-auto py-6 px-4 lg:px-6 space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl bg-zinc-950/40 border border-white/5 backdrop-blur-md">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-zinc-100">
-            03 · Deduplicate — Chọn bản của cùng bài
+          <h1 className="text-lg font-bold tracking-tight text-zinc-100 flex items-center gap-2.5">
+            <span>03 · Deduplicate — Chọn bản của cùng bài</span>
+            {totalGroups > 0 && (
+              <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-white/10">
+                {totalGroups} nhóm
+              </span>
+            )}
           </h1>
           <p className="text-xs text-zinc-400 mt-1">
-            So sánh các video nghi cùng bài. Mọi bản được giữ mặc định; bạn có thể bỏ chọn các bản không muốn tải.
+            So sánh trực diện các bản thu của cùng bài hát. Nhấp vào thẻ bất kỳ để giữ hoặc loại bỏ bản tải.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <button
             type="button"
             disabled={scanMutation.isPending}
             onClick={() => scanMutation.mutate()}
-            className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-zinc-100 text-zinc-900 hover:bg-white border border-white transition-all shadow-sm"
+            className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/10 transition-colors shadow-sm"
           >
             {scanMutation.isPending ? 'Đang quét...' : 'Quét lại gợi ý'}
           </button>
@@ -115,21 +120,22 @@ export const DedupView: React.FC<DedupViewProps> = ({ onNavigateDownload }) => {
           <button
             type="button"
             onClick={onNavigateDownload}
-            className="px-3.5 py-1.5 text-xs font-medium rounded-lg glass-card text-zinc-300 hover:text-white border border-white/10"
+            className="px-4 py-1.5 text-xs font-medium rounded-lg bg-sky-500/15 text-sky-200 border border-sky-400/30 hover:bg-sky-500/25 transition-all shadow-sm"
           >
-            Bỏ qua bước này → Download
+            Tiếp tục sang bước 04 · Download →
           </button>
         </div>
       </div>
 
       {/* Manual Alias Card */}
-      <details className="glass-panel rounded-xl border border-white/10 p-4 text-xs group">
-        <summary className="font-semibold text-zinc-300 cursor-pointer select-none">
-          Ghép thủ công hai hoặc nhiều video
+      <details className="glass-panel rounded-xl border border-white/5 p-3.5 text-xs group">
+        <summary className="font-medium text-zinc-400 hover:text-zinc-200 cursor-pointer select-none flex items-center gap-2">
+          <span>Ghép thủ công hai hoặc nhiều video</span>
+          <span className="text-zinc-600 font-mono text-xs">(Nâng cao)</span>
         </summary>
-        <form onSubmit={handleManualAlias} className="mt-3 space-y-3">
-          <p className="text-zinc-500 text-[11px]">
-            Dán các video ID cách nhau bằng dấu phẩy. Đây là xác nhận alias độc lập với việc loại bản tải.
+        <form onSubmit={handleManualAlias} className="mt-3 space-y-3 pt-3 border-t border-white/5">
+          <p className="text-zinc-400 text-xs">
+            Dán các video ID cách nhau bằng dấu phẩy để xác nhận alias độc lập với việc loại bản tải.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input
@@ -155,22 +161,23 @@ export const DedupView: React.FC<DedupViewProps> = ({ onNavigateDownload }) => {
             >
               {aliasMutation.isPending ? 'Đang xử lý...' : 'Xác nhận alias và quét lại'}
             </button>
-            {aliasMsg && <span className="text-[11px] text-zinc-400">{aliasMsg}</span>}
+            {aliasMsg && <span className="text-xs text-zinc-400">{aliasMsg}</span>}
           </div>
         </form>
       </details>
 
-      {/* Groups List */}
+      {/* Groups List (Responsive Comparison Cards) */}
       <div className="space-y-4">
         {groupsQuery.isLoading ? (
-          <div className="py-12 text-center text-xs font-mono text-zinc-500">Đang tải danh sách nhóm trùng...</div>
+          <div className="py-16 text-center text-xs font-mono text-zinc-500">Đang tải danh sách nhóm trùng...</div>
         ) : groups.length === 0 ? (
-          <div className="glass-panel rounded-2xl p-8 text-center text-xs text-zinc-400 space-y-2">
-            <p>Chưa có nhóm nghi trùng nào. Mọi bản bài hát trong thư viện sẽ được giữ mặc định để tải.</p>
+          <div className="glass-panel rounded-2xl p-12 text-center text-xs text-zinc-400 space-y-3">
+            <p className="text-sm text-zinc-300 font-medium">Không có nhóm nào bị trùng lặp.</p>
+            <p className="text-zinc-500">Mọi bản bài hát trong thư viện sẽ được giữ mặc định để tải về.</p>
             <button
               type="button"
               onClick={onNavigateDownload}
-              className="mt-2 text-zinc-200 underline font-medium hover:text-white"
+              className="mt-3 px-4 py-2 text-xs font-medium rounded-xl bg-sky-500 hover:bg-sky-400 text-white shadow-md transition-all"
             >
               Chuyển tiếp sang bước 04 · Download →
             </button>
@@ -179,21 +186,26 @@ export const DedupView: React.FC<DedupViewProps> = ({ onNavigateDownload }) => {
           groups.map((group: DedupGroup) => (
             <div
               key={group.group_id}
-              className={`glass-panel rounded-xl border p-4 space-y-3 transition-opacity ${
-                group.rejected ? 'opacity-50 border-white/5' : 'border-white/10'
+              className={`glass-panel rounded-2xl border p-4 sm:p-5 space-y-3.5 transition-all ${
+                group.rejected ? 'opacity-50 border-white/5 bg-zinc-950/20' : 'border-white/10 shadow-lg'
               }`}
             >
               {/* Group Header */}
-              <div className="flex items-center justify-between gap-4 pb-2 border-b border-white/5">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/5">
                 <div>
-                  <h3 className="text-sm font-semibold text-zinc-200">{group.title_key}</h3>
-                  <div className="text-[11px] text-zinc-500 mt-0.5">
-                    {group.evidence_type === 'confirmed_alias'
-                      ? 'Alias đã xác nhận'
-                      : group.artist_conflict
-                        ? 'Tên chuẩn hóa giống · Kênh khác nhau · Cần xem kỹ'
-                        : 'Tên chuẩn hóa giống nhau'}{' '}
-                    · {group.member_count} bản thu
+                  <h3 className="text-base font-semibold text-zinc-100">{group.title_key}</h3>
+                  <div className="text-xs text-zinc-400 mt-0.5 flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full bg-zinc-800/80 border border-white/5 font-mono text-zinc-300">
+                      {group.member_count} bản thu
+                    </span>
+                    <span className="text-zinc-600">·</span>
+                    <span>
+                      {group.evidence_type === 'confirmed_alias'
+                        ? 'Alias đã xác nhận'
+                        : group.artist_conflict
+                          ? 'Tên giống nhau · Khác nghệ sĩ/kênh'
+                          : 'Tên chuẩn hóa trùng'}
+                    </span>
                   </div>
                 </div>
 
@@ -206,7 +218,7 @@ export const DedupView: React.FC<DedupViewProps> = ({ onNavigateDownload }) => {
                         keep: true,
                       })
                     }
-                    className="px-2.5 py-1 text-xs rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-white/5"
+                    className="px-3 py-1 text-xs font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-white/10 transition-colors"
                   >
                     Giữ tất cả
                   </button>
@@ -218,59 +230,79 @@ export const DedupView: React.FC<DedupViewProps> = ({ onNavigateDownload }) => {
                         rejected: !group.rejected,
                       })
                     }
-                    className="px-2.5 py-1 text-xs rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-white/5"
+                    className="px-3 py-1 text-xs font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-white/5 transition-colors"
                   >
                     {group.rejected ? 'Hoàn tác' : 'Không ghép nhóm này'}
                   </button>
                 </div>
               </div>
 
-              {/* Members List */}
-              <div className="space-y-2">
+              {/* Members Grid (Responsive Multi-Column Comparison Cards) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                 {group.members.map((member: DedupMember) => (
                   <div
                     key={member.video_id}
-                    className="flex items-center gap-3 p-2 rounded-lg bg-zinc-950/30 border border-white/5 text-xs"
+                    onClick={() =>
+                      selectionMutation.mutate({
+                        videoIds: [member.video_id],
+                        keep: !member.keep,
+                      })
+                    }
+                    className={`group relative flex items-start gap-3 p-3 rounded-xl border cursor-pointer select-none transition-all duration-150 ${
+                      member.keep
+                        ? 'bg-sky-500/5 border-sky-400/30 hover:border-sky-400/50 shadow-sm'
+                        : 'bg-zinc-950/40 border-white/5 opacity-55 hover:opacity-85 hover:border-white/20'
+                    }`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={member.keep}
-                      onChange={(e) =>
-                        selectionMutation.mutate({
-                          videoIds: [member.video_id],
-                          keep: e.target.checked,
-                        })
-                      }
-                      className="rounded border-zinc-700 bg-zinc-900 text-zinc-100 cursor-pointer"
-                      title="Chọn giữ bản này để tải"
-                    />
-
-                    <div className="w-16 h-10 shrink-0 rounded bg-zinc-900 overflow-hidden">
+                    {/* Square Squircle Album Cover (56x56) */}
+                    <div className="relative w-14 h-14 shrink-0 rounded-xl bg-zinc-900 overflow-hidden border border-white/5 shadow-sm">
                       <img
                         src={`https://i.ytimg.com/vi/${member.video_id}/mqdefault.jpg`}
                         alt=""
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover scale-105"
                         loading="lazy"
                       />
+                      {member.keep && (
+                        <div className="absolute inset-0 bg-sky-500/15 backdrop-blur-[1px] flex items-center justify-center">
+                          <span className="w-5 h-5 rounded-full bg-sky-500 text-white text-xs font-bold flex items-center justify-center shadow-sm">
+                            ✓
+                          </span>
+                        </div>
+                      )}
                     </div>
 
-                    <div className="flex-1 min-w-0">
+                    {/* Track Details */}
+                    <div className="flex-1 min-w-0 pr-1">
                       <a
                         href={`https://www.youtube.com/watch?v=${encodeURIComponent(member.video_id)}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="font-medium text-zinc-200 hover:text-white line-clamp-1"
+                        onClick={(e) => e.stopPropagation()}
+                        className="font-medium text-xs text-zinc-100 hover:text-white line-clamp-2 leading-snug transition-colors"
+                        title={member.raw_title || member.video_id}
                       >
                         {member.raw_title || member.video_id}
                       </a>
-                      <div className="text-[11px] text-zinc-500 truncate">
-                        {member.channel} · {member.version_marker || 'Bản chuẩn'}
+
+                      <div className="text-xs text-zinc-400 truncate mt-1 flex items-center gap-1.5">
+                        <span className="truncate max-w-[140px]">{member.channel || 'Chưa rõ kênh'}</span>
+                        <span className="text-zinc-600">·</span>
+                        <span className="font-mono text-zinc-500">{member.version_marker || 'Chuẩn'}</span>
                       </div>
                     </div>
 
-                    <span className="text-[10px] text-zinc-500 font-mono">
-                      {member.keep ? 'Sẽ tải' : 'Loại bỏ'}
-                    </span>
+                    {/* Keep / Skip Status Badge */}
+                    <div className="shrink-0 pt-0.5">
+                      <span
+                        className={`text-xs font-medium px-2 py-0.5 rounded-md transition-colors ${
+                          member.keep
+                            ? 'bg-sky-500/20 text-sky-200 border border-sky-400/30'
+                            : 'bg-zinc-800/80 text-zinc-500 border border-white/5'
+                        }`}
+                      >
+                        {member.keep ? 'Sẽ tải' : 'Bỏ qua'}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>

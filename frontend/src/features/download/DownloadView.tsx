@@ -6,7 +6,6 @@ import { DownloadBatch, DownloadBatchItem, AudioFormat } from '../../api/types';
 interface DownloadViewProps {
   batchLocked: boolean;
   onRefreshWorkflow: () => void;
-  onNavigateConvert?: () => void;
 }
 
 const BATCH_STATUS_LABELS: Record<string, string> = {
@@ -82,7 +81,6 @@ type StatusFilter = 'all' | 'failed' | 'running' | 'queued' | 'completed';
 export const DownloadView: React.FC<DownloadViewProps> = ({
   batchLocked,
   onRefreshWorkflow,
-  onNavigateConvert,
 }) => {
   const queryClient = useQueryClient();
   const [outputDir, setOutputDir] = useState<string>(() => {
@@ -98,6 +96,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
   const [batchPage, setBatchPage] = useState(1);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [inspectItem, setInspectItem] = useState<DownloadBatchItem | null>(null);
+  const [isListExpanded, setIsListExpanded] = useState<boolean>(false);
 
   const [format, setFormat] = useState<AudioFormat>(() => {
     try {
@@ -107,33 +106,17 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
     }
   });
 
-  const [cleanNames, setCleanNames] = useState<boolean>(() => {
-    try {
-      const v = localStorage.getItem('auralytica-clean-names');
-      return v !== null ? v === '1' : true;
-    } catch {
-      return true;
-    }
-  });
-
-  const [embedMetadata, setEmbedMetadata] = useState<boolean>(() => {
-    try {
-      const v = localStorage.getItem('auralytica-embed-metadata');
-      return v !== null ? v === '1' : true;
-    } catch {
-      return true;
-    }
-  });
+  // Clean names & embed metadata are now always enabled by default
+  const cleanNames = true;
+  const embedMetadata = true;
 
   // Save settings to local storage
   useEffect(() => {
     try {
       localStorage.setItem('auralytica-output', outputDir);
       localStorage.setItem('auralytica-format', format);
-      localStorage.setItem('auralytica-clean-names', cleanNames ? '1' : '0');
-      localStorage.setItem('auralytica-embed-metadata', embedMetadata ? '1' : '0');
-    } catch {}
-  }, [outputDir, format, cleanNames, embedMetadata]);
+    } catch { }
+  }, [outputDir, format]);
 
   // Fetch preview
   const previewQuery = useQuery({
@@ -264,9 +247,20 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
       <div className="glass-panel rounded-2xl border border-white/10 p-6 space-y-4 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-end gap-3">
           <div className="flex-1">
-            <label className="block text-xs font-medium text-zinc-300 mb-1.5">
-              Thư mục lưu trên máy
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-medium text-zinc-300">
+                Thư mục lưu trên máy
+              </label>
+              <button
+                type="button"
+                onClick={() => previewQuery.refetch()}
+                disabled={previewQuery.isFetching}
+                className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1 transition-colors disabled:opacity-50"
+                title="Quét lại file đã có trong thư mục"
+              >
+                <span>{previewQuery.isFetching ? 'Đang quét...' : '↻ Quét lại thư mục'}</span>
+              </button>
+            </div>
             <input
               type="text"
               value={outputDir}
@@ -283,7 +277,13 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
             onClick={() => startMutation.mutate()}
             className="px-5 py-2 text-xs font-semibold rounded-lg bg-zinc-100 text-zinc-900 hover:bg-white border border-white disabled:opacity-40 disabled:pointer-events-none transition-all shadow-md shrink-0"
           >
-            {startMutation.isPending ? 'Đang khởi tạo...' : 'Tải toàn bộ bản giữ'}
+            {startMutation.isPending
+              ? 'Đang khởi tạo...'
+              : preview && preview.needed > 0
+                ? `Tải ${preview.needed} bài còn thiếu`
+                : preview && preview.needed === 0
+                  ? 'Đã có đủ file trên máy'
+                  : 'Tải toàn bộ bản giữ'}
           </button>
         </div>
 
@@ -307,41 +307,25 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
         </div>
 
         {/* Audio Pipeline Settings */}
-        <div className="pt-3 border-t border-white/5 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
-              Định dạng âm thanh xuất xưởng
-            </span>
-            <span className="text-[11px] text-zinc-500 font-mono">
-              In-stream FFmpeg Pipeline
-            </span>
+        {/* Clean Audio Format Selection (2 Choices) */}
+        <div className="pt-3 border-t border-white/5 space-y-2.5">
+          <div className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+            Định dạng âm thanh xuất xưởng
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               {
                 id: 'm4a_alac',
-                name: 'M4A ALAC Lossless',
-                badge: 'Apple Music',
-                desc: 'Lossless bit-perfect từ nguồn Opus; tương thích tối đa Apple Music.',
-              },
-              {
-                id: 'm4a_aac',
-                name: 'M4A AAC (256k)',
-                badge: 'Tiết kiệm bộ nhớ',
-                desc: 'AAC chất lượng cao, nạp trực tiếp vào Apple Music / iTunes.',
+                name: 'Lossless ALAC (M4A)',
+                badge: 'Chuẩn Apple Music',
+                desc: 'Lossless bit-perfect từ Opus nguồn, tương thích gốc với Apple Music / iTunes.',
               },
               {
                 id: 'mp3',
-                name: 'MP3 (320k)',
+                name: 'MP3 (320 kbps)',
                 badge: 'Phổ thông',
-                desc: 'Định dạng tương thích mọi dòng máy nghe nhạc và hệ thống âm thanh.',
-              },
-              {
-                id: 'raw',
-                name: 'Nguyên bản (Raw)',
-                badge: 'Gốc YouTube',
-                desc: 'Giữ nguyên codec gốc từ YouTube không qua transcode.',
+                desc: 'Định dạng tương thích mọi dòng máy nghe nhạc, hệ thống ô tô và thiết bị di động.',
               },
             ].map((fmt) => (
               <button
@@ -349,58 +333,30 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
                 type="button"
                 disabled={batchLocked}
                 onClick={() => setFormat(fmt.id as AudioFormat)}
-                className={`text-left p-3 rounded-xl border transition-all ${
-                  format === fmt.id
-                    ? 'bg-zinc-100 text-zinc-900 border-white shadow-lg shadow-white/5'
+                className={`text-left p-3.5 rounded-xl border transition-all ${format === fmt.id
+                    ? 'bg-sky-500/15 text-white border-sky-400/40 shadow-[0_0_15px_rgba(56,189,248,0.12)] ring-1 ring-sky-400/20'
                     : 'bg-zinc-950/40 text-zinc-300 border-white/5 hover:border-white/20 hover:bg-zinc-900/40'
-                }`}
+                  }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-semibold text-xs">{fmt.name}</span>
+                  <span className="font-semibold text-xs text-zinc-100">{fmt.name}</span>
                   <span
-                    className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
-                      format === fmt.id
-                        ? 'bg-zinc-800 text-zinc-100'
-                        : 'bg-white/5 text-zinc-400'
-                    }`}
+                    className={`text-xs px-2 py-0.5 rounded font-medium ${format === fmt.id
+                        ? 'bg-sky-500/25 text-sky-200 border border-sky-400/30'
+                        : 'bg-white/5 text-zinc-400 border border-white/5'
+                      }`}
                   >
                     {fmt.badge}
                   </span>
                 </div>
                 <p
-                  className={`text-[11px] leading-tight ${
-                    format === fmt.id ? 'text-zinc-600' : 'text-zinc-500'
-                  }`}
+                  className={`text-xs leading-relaxed ${format === fmt.id ? 'text-zinc-300' : 'text-zinc-500'
+                    }`}
                 >
                   {fmt.desc}
                 </p>
               </button>
             ))}
-          </div>
-
-          {/* Option toggles */}
-          <div className="flex flex-wrap items-center gap-6 pt-1 text-xs text-zinc-300">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={cleanNames}
-                onChange={(e) => setCleanNames(e.target.checked)}
-                disabled={batchLocked}
-                className="rounded border-zinc-700 bg-zinc-900 text-zinc-100 focus:ring-0 focus:ring-offset-0"
-              />
-              <span>Làm sạch tên file (Bỏ mã [video_id], lọc tags YouTube thừa)</span>
-            </label>
-
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={embedMetadata}
-                onChange={(e) => setEmbedMetadata(e.target.checked)}
-                disabled={batchLocked}
-                className="rounded border-zinc-700 bg-zinc-900 text-zinc-100 focus:ring-0 focus:ring-offset-0"
-              />
-              <span>Nhúng ảnh bìa bài hát (Cover Art) & siêu dữ liệu Tags</span>
-            </label>
           </div>
         </div>
 
@@ -443,363 +399,378 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
             </select>
           </div>
 
-          {currentBatch && (
-            <div className="space-y-4 pt-2">
-              {/* Batch Meta & Actions */}
-              <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-zinc-950/40 border border-white/5 text-xs">
-                <div>
-                  <div className="font-semibold text-zinc-200 flex flex-wrap items-center gap-2">
-                    <span>Lượt #{currentBatch.batch_id}</span>
-                    <span className="text-zinc-500">·</span>
-                    <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-zinc-800 text-zinc-300 border border-white/5">
-                      {BATCH_STATUS_LABELS[currentBatch.status] || currentBatch.status}
-                    </span>
-                    {currentBatch.format && (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-white/5 text-zinc-300 border border-white/10 uppercase">
-                        {currentBatch.format}
-                      </span>
-                    )}
-                    {currentBatch.clean_names && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-sans bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                        Tên sạch
-                      </span>
-                    )}
-                    {currentBatch.stop_requested && currentBatch.status === 'running' && (
-                      <span className="text-amber-400 text-[11px]">(Đang yêu cầu dừng...)</span>
-                    )}
-                  </div>
-                  <div className="text-[11px] text-zinc-400 font-mono mt-1">
-                    {completedCount} / {currentBatch.total} hoàn thành
-                    {failedCount > 0 && (
-                      <span className="text-rose-400 font-semibold ml-1.5">
-                        · {failedCount} thất bại
-                      </span>
-                    )}
-                    {runningCount > 0 && (
-                      <span className="text-sky-400 ml-1.5">
-                        · {runningCount} đang tải
-                      </span>
-                    )}
-                    <span className="text-zinc-500 ml-1.5">· Thư mục: {currentBatch.output_dir}</span>
-                  </div>
-                </div>
+          {currentBatch && (() => {
+            const runningItem = currentBatch.items.find((i) => i.status === 'running');
+            const isCompleted = currentBatch.status === 'completed';
+            const percent = Math.round((completedCount / Math.max(1, currentBatch.total)) * 100);
 
-                <div className="flex items-center gap-2">
-                  {['queued', 'running'].includes(currentBatch.status) && (
-                    <button
-                      type="button"
-                      disabled={stopMutation.isPending}
-                      onClick={() => stopMutation.mutate(currentBatch.batch_id)}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/10 transition-colors"
-                    >
-                      Tạm dừng
-                    </button>
-                  )}
-
-                  {['paused', 'partial', 'failed', 'cancelled'].includes(currentBatch.status) && (
-                    <button
-                      type="button"
-                      disabled={resumeMutation.isPending || batchLocked}
-                      onClick={() => resumeMutation.mutate(currentBatch.batch_id)}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/10 transition-colors"
-                    >
-                      Tiếp tục lượt này
-                    </button>
-                  )}
-
-                  {failedCount > 0 && !['running'].includes(currentBatch.status) && (
-                    <button
-                      type="button"
-                      disabled={isRetrying || batchLocked}
-                      onClick={() => retryFailedMutation.mutate(currentBatch.batch_id)}
-                      className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-zinc-100 text-zinc-900 hover:bg-white border border-white transition-all shadow"
-                    >
-                      {retryFailedMutation.isPending ? 'Đang khởi chạy...' : `Thử lại ${failedCount} bài lỗi`}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Progress Bar */}
-              <div className="w-full h-1.5 bg-zinc-950 rounded-full overflow-hidden border border-white/5">
-                <div
-                  className="h-full bg-zinc-200 transition-all duration-300"
-                  style={{
-                    width: `${Math.min(100, (completedCount / Math.max(1, currentBatch.total)) * 100)}%`,
-                  }}
-                />
-              </div>
-
-              {/* Step 05 Apple Music Callout Banner */}
-              {onNavigateConvert && completedCount > 0 && (
-                <div className="p-3.5 rounded-xl border border-white/10 bg-zinc-950/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                  <div>
-                    <span className="font-semibold text-zinc-200">
-                      Đã có {completedCount} file audio trong thư mục
-                    </span>
-                    <p className="text-[11px] text-zinc-400 mt-0.5">
-                      Chuyển sang bước Apple Music để loại bỏ mã [video_id] thừa ở tên file và chuyển đổi sang M4A (ALAC / AAC).
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={onNavigateConvert}
-                    className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/10 shrink-0 transition-colors"
-                  >
-                    Xử lý tên & Chuyển đổi Apple Music →
-                  </button>
-                </div>
-              )}
-
-              {/* Diagnostic Error Banner (Only shown when there are failed items) */}
-              {failedCount > 0 && (
-                <div className="p-4 rounded-xl border border-rose-500/20 bg-rose-950/20 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-semibold text-rose-300 flex items-center gap-2">
-                        <span>Chẩn đoán lượt tải: Có {failedCount} bài tải không thành công</span>
+            return (
+              <div className="space-y-4 pt-1">
+                {/* Apple Music Live Player Card */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-zinc-950/60 border border-white/10 shadow-lg space-y-4 backdrop-blur-md">
+                  {/* Top: Track visual & live status */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                      {/* 60x60 Album Squircle / Vinyl visual */}
+                      <div className="relative w-14 h-14 shrink-0 rounded-2xl bg-zinc-900 border border-white/10 shadow-md flex items-center justify-center overflow-hidden">
+                        {runningItem ? (
+                          <>
+                            <img
+                              src={`https://i.ytimg.com/vi/${runningItem.video_id}/mqdefault.jpg`}
+                              alt=""
+                              className="w-full h-full object-cover scale-110 opacity-75"
+                            />
+                            {/* Live Audio Equalizer Animation */}
+                            <div className="absolute inset-0 bg-black/50 backdrop-blur-[1px] flex items-end justify-center gap-1 p-2">
+                              <span className="w-1 bg-sky-400 rounded-full animate-[pulse_0.8s_ease-in-out_infinite] h-3" />
+                              <span className="w-1 bg-sky-400 rounded-full animate-[pulse_1.2s_ease-in-out_infinite] h-5" />
+                              <span className="w-1 bg-sky-400 rounded-full animate-[pulse_0.6s_ease-in-out_infinite] h-4" />
+                              <span className="w-1 bg-sky-400 rounded-full animate-[pulse_1.0s_ease-in-out_infinite] h-2" />
+                            </div>
+                          </>
+                        ) : isCompleted ? (
+                          <div className="w-full h-full flex items-center justify-center bg-sky-500/10 text-sky-400">
+                            <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-zinc-500 bg-zinc-900">
+                            <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                            </svg>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-[11px] text-zinc-400 mt-0.5 leading-relaxed">
-                        Hầu hết lỗi phát sinh do YouTube áp dụng giới hạn tạm thời khi tải danh sách dài. Động cơ tải đã tích hợp multi-client fallback để vượt qua cơ chế này khi thử lại.
-                      </p>
+
+                      {/* Track info & Live State */}
+                      <div className="flex-1 min-w-0 pr-2">
+                        {runningItem ? (
+                          <>
+                            <div className="text-xs font-mono text-sky-400 flex items-center gap-1.5 mb-0.5">
+                              <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+                              <span>Đang tải audio...</span>
+                            </div>
+                            <div className="text-sm font-semibold text-zinc-100 truncate" title={runningItem.title || runningItem.video_id}>
+                              {runningItem.title || runningItem.video_id}
+                            </div>
+                            <div className="text-xs text-zinc-400 font-mono mt-0.5">
+                              Đã nhận {(runningItem.downloaded_bytes / (1024 * 1024)).toFixed(1)} MB · Định dạng {currentBatch.format?.toUpperCase()}
+                            </div>
+                          </>
+                        ) : isCompleted ? (
+                          <>
+                            <div className="text-xs font-medium text-emerald-400 mb-0.5 flex items-center gap-1">
+                              <span>✓</span>
+                              <span>Toàn bộ đĩa nhạc đã hoàn tất!</span>
+                            </div>
+                            <div className="text-sm font-semibold text-zinc-100">
+                              Đã nạp thành công {completedCount} bài hát vào thư viện
+                            </div>
+                            <div className="text-xs text-zinc-400 font-mono mt-0.5 truncate" title={currentBatch.output_dir}>
+                              {currentBatch.output_dir}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-sm font-semibold text-zinc-200">
+                              Lượt #{currentBatch.batch_id} · {BATCH_STATUS_LABELS[currentBatch.status] || currentBatch.status}
+                            </div>
+                            <div className="text-xs text-zinc-400 font-mono mt-0.5 truncate">
+                              {completedCount} / {currentBatch.total} bài · {currentBatch.format?.toUpperCase()}
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      {statusFilter !== 'failed' && (
+                    {/* Action buttons */}
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+
+                      {['queued', 'running'].includes(currentBatch.status) && (
                         <button
                           type="button"
-                          onClick={() => {
-                            setStatusFilter('failed');
-                            setBatchPage(1);
-                          }}
-                          className="px-3 py-1.5 text-xs rounded-lg border border-white/10 bg-zinc-900/60 text-zinc-300 hover:bg-zinc-800 transition-colors"
+                          disabled={stopMutation.isPending}
+                          onClick={() => stopMutation.mutate(currentBatch.batch_id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/10 transition-colors"
                         >
-                          Lọc riêng {failedCount} bài lỗi
+                          Tạm dừng
                         </button>
                       )}
 
-                      {!['running'].includes(currentBatch.status) && (
+                      {['paused', 'partial', 'failed', 'cancelled'].includes(currentBatch.status) && (
+                        <button
+                          type="button"
+                          disabled={resumeMutation.isPending || batchLocked}
+                          onClick={() => resumeMutation.mutate(currentBatch.batch_id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/10 transition-colors"
+                        >
+                          Tiếp tục
+                        </button>
+                      )}
+
+                      {failedCount > 0 && !['running'].includes(currentBatch.status) && (
                         <button
                           type="button"
                           disabled={isRetrying || batchLocked}
                           onClick={() => retryFailedMutation.mutate(currentBatch.batch_id)}
-                          className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-zinc-100 text-zinc-900 hover:bg-white border border-white transition-all shadow"
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 border border-rose-500/30 transition-all shadow-sm"
                         >
-                          {retryFailedMutation.isPending ? 'Đang gửi...' : 'Thử lại tất cả bài lỗi'}
+                          {retryFailedMutation.isPending ? 'Đang gửi...' : `Thử lại ${failedCount} bài lỗi`}
                         </button>
                       )}
                     </div>
                   </div>
-                </div>
-              )}
 
-              {/* Status Filter Tabs */}
-              <div className="flex items-center gap-1 border-b border-white/10 pb-2 overflow-x-auto text-xs font-mono">
-                <button
-                  type="button"
-                  onClick={() => { setStatusFilter('all'); setBatchPage(1); }}
-                  className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
-                    statusFilter === 'all'
-                      ? 'bg-zinc-800 text-zinc-100 font-semibold border border-white/10'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03]'
-                  }`}
-                >
-                  Tất cả ({totalCount})
-                </button>
+                  {/* Master Progress Bar */}
+                  <div className="space-y-2 pt-1">
+                    <div className="w-full h-2 bg-zinc-950 rounded-full overflow-hidden border border-white/5">
+                      <div
+                        className="h-full bg-sky-400 transition-all duration-300 shadow-[0_0_8px_rgba(56,189,248,0.5)]"
+                        style={{
+                          width: `${Math.min(100, (completedCount / Math.max(1, currentBatch.total)) * 100)}%`,
+                        }}
+                      />
+                    </div>
 
-                <button
-                  type="button"
-                  onClick={() => { setStatusFilter('failed'); setBatchPage(1); }}
-                  className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 ${
-                    statusFilter === 'failed'
-                      ? 'bg-rose-500/15 text-rose-300 font-semibold border border-rose-500/30'
-                      : failedCount > 0
-                      ? 'text-rose-400 hover:bg-rose-500/10'
-                      : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <span>Thất bại ({failedCount})</span>
-                </button>
+                    {/* Progress numbers & Collapsible trigger */}
+                    <div className="flex flex-wrap items-center justify-between text-xs text-zinc-400 font-mono pt-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-zinc-200 font-medium">
+                          {completedCount} / {currentBatch.total} bài ({percent}%)
+                        </span>
+                        {failedCount > 0 && (
+                          <span className="text-rose-400 font-semibold">
+                            · {failedCount} bài lỗi
+                          </span>
+                        )}
+                        {runningCount > 0 && (
+                          <span className="text-sky-400">
+                            · {runningCount} đang tải
+                          </span>
+                        )}
+                      </div>
 
-                <button
-                  type="button"
-                  onClick={() => { setStatusFilter('running'); setBatchPage(1); }}
-                  className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
-                    statusFilter === 'running'
-                      ? 'bg-zinc-800 text-zinc-100 font-semibold border border-white/10'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03]'
-                  }`}
-                >
-                  Đang tải ({runningCount})
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { setStatusFilter('queued'); setBatchPage(1); }}
-                  className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
-                    statusFilter === 'queued'
-                      ? 'bg-zinc-800 text-zinc-100 font-semibold border border-white/10'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03]'
-                  }`}
-                >
-                  Đang chờ ({queuedCount})
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { setStatusFilter('completed'); setBatchPage(1); }}
-                  className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
-                    statusFilter === 'completed'
-                      ? 'bg-zinc-800 text-zinc-100 font-semibold border border-white/10'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03]'
-                  }`}
-                >
-                  Hoàn tất ({completedCount})
-                </button>
-              </div>
-
-              {/* Items List Table */}
-              <div className="overflow-hidden rounded-xl border border-white/5 bg-zinc-950/40">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-white/10 bg-zinc-900/60 text-zinc-400 font-mono text-[11px]">
-                      <th className="p-3">Video</th>
-                      <th className="p-3 w-36">Trạng thái</th>
-                      <th className="p-3">Chẩn đoán / Chi tiết</th>
-                      <th className="p-3 w-24 text-right">Thao tác</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {currentBatch.items.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="p-8 text-center text-zinc-500 font-mono">
-                          Không có bài nào trong danh mục này.
-                        </td>
-                      </tr>
-                    ) : (
-                      currentBatch.items.map((item) => {
-                        const errMeta = item.error_code ? ERROR_CODE_LABELS[item.error_code] : null;
-
-                        return (
-                          <tr key={item.video_id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                            {/* Video Title & Link */}
-                            <td className="p-3 max-w-[280px]">
-                              <div className="truncate font-medium text-zinc-200">
-                                {item.title || item.video_id}
-                              </div>
-                              <div className="flex items-center gap-2 mt-0.5 text-[11px] font-mono text-zinc-500">
-                                <span>{item.video_id}</span>
-                                <span>·</span>
-                                <a
-                                  href={`https://www.youtube.com/watch?v=${encodeURIComponent(item.video_id)}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-zinc-400 hover:text-zinc-200 hover:underline"
-                                >
-                                  Mở YouTube ↗
-                                </a>
-                              </div>
-                            </td>
-
-                            {/* Status */}
-                            <td className="p-3 font-mono text-[11px] whitespace-nowrap">
-                              {item.status === 'failed' ? (
-                                <span className={`inline-block px-2 py-0.5 rounded text-[11px] border font-sans ${errMeta?.color || 'text-rose-400 bg-rose-500/10 border-rose-500/20'}`}>
-                                  {errMeta?.label || 'Thất bại'}
-                                </span>
-                              ) : item.status === 'completed' || item.status === 'skipped' ? (
-                                <span className="inline-block px-2 py-0.5 rounded text-[11px] text-zinc-300 bg-zinc-800/80 border border-white/5">
-                                  {item.status === 'skipped' ? 'Đã có file' : 'Hoàn tất'}
-                                </span>
-                              ) : item.status === 'running' ? (
-                                <span className="inline-block px-2 py-0.5 rounded text-[11px] text-sky-300 bg-sky-500/10 border border-sky-500/20 animate-pulse">
-                                  Đang tải {(item.downloaded_bytes / (1024 * 1024)).toFixed(1)} MB
-                                </span>
-                              ) : (
-                                <span className="text-zinc-500">
-                                  {BATCH_STATUS_LABELS[item.status] || item.status}
-                                </span>
-                              )}
-                            </td>
-
-                            {/* Error Details / Message */}
-                            <td className="p-3 text-[11px]">
-                              {item.status === 'failed' ? (
-                                <div className="space-y-0.5">
-                                  <div className="text-zinc-300 truncate max-w-[260px]">
-                                    {item.error_message || 'yt-dlp không thể tải video này.'}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setInspectItem(item)}
-                                    className="text-zinc-400 hover:text-zinc-200 underline text-[11px] cursor-pointer"
-                                  >
-                                    Xem chi tiết nguyên nhân
-                                  </button>
-                                </div>
-                              ) : item.status === 'running' && item.total_bytes ? (
-                                <div className="w-28 h-1 bg-zinc-800 rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full bg-sky-400"
-                                    style={{
-                                      width: `${Math.min(100, (item.downloaded_bytes / Math.max(1, item.total_bytes)) * 100)}%`,
-                                    }}
-                                  />
-                                </div>
-                              ) : (
-                                <span className="text-zinc-600 font-mono">—</span>
-                              )}
-                            </td>
-
-                            {/* Action: Retry single item */}
-                            <td className="p-3 text-right">
-                              {item.status === 'failed' && (
-                                <button
-                                  type="button"
-                                  disabled={isRetrying || ['running'].includes(currentBatch.status)}
-                                  onClick={() => retryItemMutation.mutate({ batchId: currentBatch.batch_id, videoId: item.video_id })}
-                                  className="px-2.5 py-1 text-[11px] font-medium rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/10 disabled:opacity-40 transition-colors"
-                                >
-                                  Thử lại
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between text-xs text-zinc-400 pt-2 font-mono">
-                  <span>
-                    Trang {batchPage} / {totalPages} · {filteredTotal} bài
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      disabled={batchPage <= 1}
-                      onClick={() => setBatchPage((p) => Math.max(1, p - 1))}
-                      className="px-2.5 py-1 rounded-md bg-zinc-900 border border-white/10 disabled:opacity-30 hover:bg-zinc-800 transition-colors"
-                    >
-                      ← Trang trước
-                    </button>
-                    <button
-                      type="button"
-                      disabled={batchPage >= totalPages}
-                      onClick={() => setBatchPage((p) => Math.min(totalPages, p + 1))}
-                      className="px-2.5 py-1 rounded-md bg-zinc-900 border border-white/10 disabled:opacity-30 hover:bg-zinc-800 transition-colors"
-                    >
-                      Trang sau →
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsListExpanded(!isListExpanded)}
+                        className="text-zinc-400 hover:text-zinc-100 flex items-center gap-1.5 transition-colors cursor-pointer py-0.5"
+                      >
+                        <span>{isListExpanded ? 'Thu gọn danh sách' : `Xem chi tiết (${totalCount} bài)`}</span>
+                        <span className="text-[10px]">{isListExpanded ? '▲' : '▼'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              )}
-            </div>
-          )}
+
+                {/* Collapsible Details Drawer */}
+                {isListExpanded && (
+                  <div className="space-y-3 pt-2">
+                    {/* Status Filter Tabs */}
+                    <div className="flex items-center gap-1 border-b border-white/10 pb-2 overflow-x-auto text-xs font-mono">
+                      <button
+                        type="button"
+                        onClick={() => { setStatusFilter('all'); setBatchPage(1); }}
+                        className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${statusFilter === 'all'
+                            ? 'bg-zinc-800 text-zinc-100 font-semibold border border-white/10'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03]'
+                          }`}
+                      >
+                        Tất cả ({totalCount})
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { setStatusFilter('failed'); setBatchPage(1); }}
+                        className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 ${statusFilter === 'failed'
+                            ? 'bg-rose-500/15 text-rose-300 font-semibold border border-rose-500/30'
+                            : failedCount > 0
+                              ? 'text-rose-400 hover:bg-rose-500/10'
+                              : 'text-zinc-500 hover:text-zinc-300'
+                          }`}
+                      >
+                        <span>Thất bại ({failedCount})</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { setStatusFilter('running'); setBatchPage(1); }}
+                        className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${statusFilter === 'running'
+                            ? 'bg-zinc-800 text-zinc-100 font-semibold border border-white/10'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03]'
+                          }`}
+                      >
+                        Đang tải ({runningCount})
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { setStatusFilter('queued'); setBatchPage(1); }}
+                        className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${statusFilter === 'queued'
+                            ? 'bg-zinc-800 text-zinc-100 font-semibold border border-white/10'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03]'
+                          }`}
+                      >
+                        Đang chờ ({queuedCount})
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { setStatusFilter('completed'); setBatchPage(1); }}
+                        className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${statusFilter === 'completed'
+                            ? 'bg-zinc-800 text-zinc-100 font-semibold border border-white/10'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03]'
+                          }`}
+                      >
+                        Hoàn tất ({completedCount})
+                      </button>
+                    </div>
+
+                    {/* Items List Table */}
+                    <div className="overflow-hidden rounded-xl border border-white/5 bg-zinc-950/40">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="border-b border-white/10 bg-zinc-900/60 text-zinc-400 font-mono text-xs">
+                            <th className="p-3">Video</th>
+                            <th className="p-3 w-36">Trạng thái</th>
+                            <th className="p-3">Chẩn đoán / Chi tiết</th>
+                            <th className="p-3 w-24 text-right">Thao tác</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {currentBatch.items.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="p-8 text-center text-zinc-500 font-mono">
+                                Không có bài nào trong danh mục này.
+                              </td>
+                            </tr>
+                          ) : (
+                            currentBatch.items.map((item) => {
+                              const errMeta = item.error_code ? ERROR_CODE_LABELS[item.error_code] : null;
+
+                              return (
+                                <tr key={item.video_id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                                  {/* Video Title & Link */}
+                                  <td className="p-3 max-w-[280px]">
+                                    <div className="truncate font-medium text-zinc-200">
+                                      {item.title || item.video_id}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5 text-xs font-mono text-zinc-500">
+                                      {/* <span>{item.video_id}</span>
+                                      <span>·</span> */}
+                                      <a
+                                        href={`https://www.youtube.com/watch?v=${encodeURIComponent(item.video_id)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-zinc-400 hover:text-zinc-200 hover:underline"
+                                      >
+                                        Mở YouTube ↗
+                                      </a>
+                                    </div>
+                                  </td>
+
+                                  {/* Status */}
+                                  <td className="p-3 font-mono text-xs whitespace-nowrap">
+                                    {item.status === 'failed' ? (
+                                      <span className={`inline-block px-2 py-0.5 rounded text-xs border font-sans ${errMeta?.color || 'text-rose-400 bg-rose-500/10 border-rose-500/20'}`}>
+                                        {errMeta?.label || 'Thất bại'}
+                                      </span>
+                                    ) : item.status === 'completed' || item.status === 'skipped' ? (
+                                      <span className="inline-block px-2 py-0.5 rounded text-xs text-zinc-300 bg-zinc-800/80 border border-white/5">
+                                        {item.status === 'skipped' ? 'Đã có file' : 'Hoàn tất'}
+                                      </span>
+                                    ) : item.status === 'running' ? (
+                                      <span className="inline-block px-2 py-0.5 rounded text-xs text-sky-300 bg-sky-500/10 border border-sky-500/20 animate-pulse">
+                                        Đang tải {(item.downloaded_bytes / (1024 * 1024)).toFixed(1)} MB
+                                      </span>
+                                    ) : (
+                                      <span className="text-zinc-500">
+                                        {BATCH_STATUS_LABELS[item.status] || item.status}
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  {/* Error Details / Message */}
+                                  <td className="p-3 text-xs">
+                                    {item.status === 'failed' ? (
+                                      <div className="space-y-0.5">
+                                        <div className="text-zinc-300 truncate max-w-[260px]">
+                                          {item.error_message || 'yt-dlp không thể tải video này.'}
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => setInspectItem(item)}
+                                          className="text-zinc-400 hover:text-zinc-200 underline text-xs cursor-pointer"
+                                        >
+                                          Xem chi tiết nguyên nhân
+                                        </button>
+                                      </div>
+                                    ) : item.status === 'running' && item.total_bytes ? (
+                                      <div className="w-28 h-1 bg-zinc-800 rounded-full overflow-hidden">
+                                        <div
+                                          className="h-full bg-sky-400"
+                                          style={{
+                                            width: `${Math.min(100, (item.downloaded_bytes / Math.max(1, item.total_bytes)) * 100)}%`,
+                                          }}
+                                        />
+                                      </div>
+                                    ) : (
+                                      <span className="text-zinc-600 font-mono">—</span>
+                                    )}
+                                  </td>
+
+                                  {/* Action: Retry single item */}
+                                  <td className="p-3 text-right">
+                                    {item.status === 'failed' && (
+                                      <button
+                                        type="button"
+                                        disabled={isRetrying || ['running'].includes(currentBatch.status)}
+                                        onClick={() => retryItemMutation.mutate({ batchId: currentBatch.batch_id, videoId: item.video_id })}
+                                        className="px-2.5 py-1 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/10 disabled:opacity-40 transition-colors"
+                                      >
+                                        Thử lại
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Pagination Footer */}
+                    {totalPages > 1 && (
+                      <div className="p-3 border-t border-white/[0.06] flex items-center justify-between text-xs text-zinc-400">
+                        <span className="font-mono text-xs">
+                          Trang {batchPage} / {totalPages} · {filteredTotal} bài
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={batchPage <= 1}
+                            onClick={() => setBatchPage(batchPage - 1)}
+                            className="px-2.5 py-1 rounded bg-zinc-900 border border-white/5 text-zinc-300 hover:text-white disabled:opacity-40"
+                          >
+                            ←
+                          </button>
+                          <button
+                            type="button"
+                            disabled={batchPage >= totalPages}
+                            onClick={() => setBatchPage(batchPage + 1)}
+                            className="px-2.5 py-1 rounded bg-zinc-900 border border-white/5 text-zinc-300 hover:text-white disabled:opacity-40"
+                          >
+                            →
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -809,7 +780,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
           <div className="glass-panel rounded-2xl border border-white/15 p-6 max-w-lg w-full space-y-4 shadow-2xl bg-zinc-900/90 text-xs">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider">
+                <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
                   Chẩn đoán lỗi video
                 </span>
                 <h3 className="text-sm font-semibold text-zinc-100 mt-1">
@@ -826,15 +797,15 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
             </div>
 
             <div className="space-y-3 p-3.5 rounded-xl bg-zinc-950/60 border border-white/5 font-mono">
-              <div className="flex justify-between text-[11px]">
+              <div className="flex justify-between text-xs">
                 <span className="text-zinc-500">Video ID:</span>
                 <span className="text-zinc-300">{inspectItem.video_id}</span>
               </div>
-              <div className="flex justify-between text-[11px]">
+              <div className="flex justify-between text-xs">
                 <span className="text-zinc-500">Mã lỗi hệ thống:</span>
                 <span className="text-zinc-300 font-semibold">{inspectItem.error_code || 'unknown'}</span>
               </div>
-              <div className="border-t border-white/5 pt-2 text-[11px]">
+              <div className="border-t border-white/5 pt-2 text-xs">
                 <span className="text-zinc-500 block mb-1">Thông điệp từ yt-dlp:</span>
                 <p className="text-zinc-300 leading-relaxed font-sans bg-zinc-900/60 p-2 rounded border border-white/5">
                   {inspectItem.error_message || 'Không có thông tin chi tiết.'}
@@ -845,14 +816,14 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
             {inspectItem.error_code && ERROR_CODE_LABELS[inspectItem.error_code] && (
               <div className="space-y-2 p-3.5 rounded-xl bg-zinc-800/30 border border-white/5">
                 <div className="font-semibold text-zinc-200 flex items-center gap-2">
-                  <span className={`px-2 py-0.5 rounded text-[11px] border font-sans ${ERROR_CODE_LABELS[inspectItem.error_code].color}`}>
+                  <span className={`px-2 py-0.5 rounded text-xs border font-sans ${ERROR_CODE_LABELS[inspectItem.error_code].color}`}>
                     {ERROR_CODE_LABELS[inspectItem.error_code].label}
                   </span>
                 </div>
-                <p className="text-zinc-400 text-[11px] leading-relaxed">
+                <p className="text-zinc-400 text-xs leading-relaxed">
                   {ERROR_CODE_LABELS[inspectItem.error_code].desc}
                 </p>
-                <div className="pt-1.5 border-t border-white/5 text-[11px] text-zinc-300">
+                <div className="pt-1.5 border-t border-white/5 text-xs text-zinc-300">
                   <strong className="text-zinc-200">Gợi ý xử lý: </strong>
                   {ERROR_CODE_LABELS[inspectItem.error_code].advice}
                 </div>
@@ -882,7 +853,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
                     type="button"
                     disabled={isRetrying}
                     onClick={() => retryItemMutation.mutate({ batchId: currentBatch.batch_id, videoId: inspectItem.video_id })}
-                    className="px-3.5 py-1.5 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-white border border-white transition-all shadow"
+                    className="px-3.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-medium transition-all shadow-sm"
                   >
                     {retryItemMutation.isPending ? 'Đang gửi...' : 'Thử lại bài này'}
                   </button>

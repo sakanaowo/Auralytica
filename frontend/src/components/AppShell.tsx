@@ -2,8 +2,8 @@ import React from 'react';
 import { WorkflowState } from '../api/types';
 
 interface AppShellProps {
-  currentStep: 'import' | 'explore' | 'deduplicate' | 'download' | 'convert';
-  onNavigate: (step: 'import' | 'explore' | 'deduplicate' | 'download' | 'convert') => void;
+  currentStep: 'import' | 'explore' | 'deduplicate' | 'download';
+  onNavigate: (step: 'import' | 'explore' | 'deduplicate' | 'download') => void;
   workflow?: WorkflowState;
   children: React.ReactNode;
 }
@@ -14,12 +14,11 @@ export const AppShell: React.FC<AppShellProps> = ({
   workflow,
   children,
 }) => {
-  const steps: Array<{ key: 'import' | 'explore' | 'deduplicate' | 'download' | 'convert'; label: string; num: string }> = [
+  const steps: Array<{ key: 'import' | 'explore' | 'deduplicate' | 'download'; label: string; num: string }> = [
     { key: 'import', label: 'Import', num: '01' },
     { key: 'explore', label: 'Explore', num: '02' },
     { key: 'deduplicate', label: 'Deduplicate', num: '03' },
     { key: 'download', label: 'Download', num: '04' },
-    { key: 'convert', label: 'Apple Music', num: '05' },
   ];
 
   return (
@@ -44,7 +43,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           >
             auralytica
           </a>
-          <span className="text-[9px] font-mono tracking-widest uppercase px-1.5 py-0.5 rounded border border-white/10 text-zinc-400 bg-white/[0.02]">
+          <span className="text-xs font-mono tracking-wider uppercase px-1.5 py-0.5 rounded border border-white/10 text-zinc-400 bg-white/[0.02]">
             Local
           </span>
         </div>
@@ -58,13 +57,13 @@ export const AppShell: React.FC<AppShellProps> = ({
                 key={s.key}
                 type="button"
                 onClick={() => onNavigate(s.key)}
-                className={`px-3 py-1 text-xs rounded-lg transition-all select-none font-medium flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 text-xs rounded-lg transition-all select-none font-medium flex items-center gap-1.5 ${
                   isActive
                     ? 'bg-zinc-800 text-zinc-100 border border-white/10 shadow-sm'
                     : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
-                <span className="text-[10px] font-mono text-zinc-500">{s.num}</span>
+                <span className="text-xs font-mono text-zinc-500">{s.num}</span>
                 <span>{s.label}</span>
               </button>
             );
@@ -76,26 +75,32 @@ export const AppShell: React.FC<AppShellProps> = ({
           {workflow ? (
             <div className="flex items-center gap-2">
               {workflow.batch_locked && (
-                <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
                   Đang tải audio
                 </span>
               )}
               {workflow.active_import ? (
-                <span className="text-[11px] font-mono text-zinc-400">
+                <span className="text-xs font-mono text-zinc-400">
                   {workflow.counts.music.toLocaleString('vi-VN')} Nhạc · {workflow.counts.rest.toLocaleString('vi-VN')} Còn lại
                 </span>
               ) : (
-                <span className="text-[11px] text-zinc-500">Chưa nhập lịch sử</span>
+                <span className="text-xs text-zinc-500">Chưa nhập lịch sử</span>
               )}
             </div>
           ) : (
-            <span className="text-[11px] text-zinc-500 font-mono">Đang kết nối...</span>
+            <span className="text-xs text-zinc-500 font-mono">Đang kết nối...</span>
           )}
         </div>
       </header>
 
       {/* Main Content Area */}
-      <main className="relative z-10 flex-1 p-6 flex flex-col">{children}</main>
+      <main
+        className={`relative z-10 flex-1 flex flex-col ${
+          currentStep === 'explore' ? 'h-[calc(100vh-61px)] overflow-hidden p-4' : 'p-6'
+        }`}
+      >
+        {children}
+      </main>
     </div>
   );
 };

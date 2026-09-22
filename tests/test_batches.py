@@ -184,3 +184,20 @@ class BatchTests(unittest.TestCase):
             self.assertEqual(batches.get_batch(self.db,batch['batch_id'])['status'],'paused')
         finally:
             if worker.is_alive(): worker.terminate(); worker.join(5)
+
+    def test_disk_scan_detects_existing_audio_in_subdirectories_without_prior_batch(self):
+        apple_music = self.output / 'Apple Music'
+        apple_music.mkdir(parents=True)
+        file0 = apple_music / 'Song 0.m4a'
+        file0.write_bytes(b'song-zero-bytes')
+        file1 = self.output / 'Artist - Song 1 [00000000001].opus'
+        file1.write_bytes(b'song-one-bytes')
+
+        snapshot = batches.eligible_snapshot(self.db, self.output)
+        self.assertEqual(snapshot['skipped'], 2)
+        self.assertEqual(snapshot['needed'], 1)
+
+        batch = batches.create_batch(self.db, self.output, expected_token=snapshot['token'])
+        self.assertEqual(batch['skipped'], 2)
+        self.assertEqual(batch['queued'], 1)
+
