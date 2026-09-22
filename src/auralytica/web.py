@@ -6,7 +6,7 @@ import hashlib
 import json
 import sqlite3
 import tempfile
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
@@ -16,7 +16,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers, UploadFile
 
 from . import download_controls as downloads
-from . import dedup, enrichment, metadata
+from . import converter, dedup, enrichment, metadata
 from .importer import import_folder
 from .explore import summary as explore_summary
 from .review import list_videos, move_videos
@@ -141,6 +141,25 @@ class GroupSelectionRequest(BaseModel):
     expected_revision: int = Field(ge=0)
 
 
+class ConverterStartRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    directory: str = Field(min_length=1, max_length=4096)
+    output_dir: str = Field(min_length=1, max_length=4096)
+    format: Literal['m4a_alac', 'm4a_aac', 'mp3'] = 'm4a_alac'
+    remove_source: bool = False
+    items: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class RenameItem(BaseModel):
+    source_path: str
+    new_name: str
+
+
+class RenameRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    items: list[RenameItem] = Field(min_length=1, max_length=5000)
+
+
 def _import_uploads(database, uploads):
     names = {}
     for upload in uploads:
@@ -214,6 +233,7 @@ def create_app(database: str | Path, *, port=8765, max_body_bytes=64 * 1024 * 10
     @app.get('/explore')
     @app.get('/deduplicate')
     @app.get('/download')
+    @app.get('/convert')
     def workflow_page():
         return FileResponse(static / 'index.html')
 
@@ -425,5 +445,45 @@ def create_app(database: str | Path, *, port=8765, max_body_bytes=64 * 1024 * 10
     def download_resume(batch_id: int):
         with closing(open_database(database)) as db:
             return downloads.start_download(db, database, batch_id=batch_id, launcher=app.state.launch_worker)
+
+    @app.get('/api/converter/scan')
+    def converter_scan(directory: Annotated[str | None, Query(max_length=4096)] = None):
+        target_dir = directory
+        if not target_dir:
+            with closing(open_database(database)) as db:
+                row = db.execute("SELECT output_dir FROM download_batches ORDER BY id DESC LIMIT 1").fetchone()
+                if row:
+                    target_dir = row[0]
+                else:
+                    target_dir = '~/Music/Auralytica'
+        return converter.scan_directory(database, target_dir)
+
+    @app.post('/api/converter/start')
+    def converter_start(payload: ConverterStartRequest):
+        items = payload.items
+        if not items:
+            scan_res = converter.scan_directory(database, payload.directory)
+            items = scan_res['items']
+        if not items:
+            raise HTTPException(400, 'Không tìm thấy file nào để chuyển đổi.')
+        return converter.conversion_manager.start_conversion(
+            items,
+            payload.output_dir,
+            format_type=payload.format,
+            remove_source=payload.remove_source,
+        )
+
+    @app.get('/api/converter/status')
+    def converter_status():
+        return converter.conversion_manager.get_status()
+
+    @app.post('/api/converter/stop')
+    def converter_stop():
+        return converter.conversion_manager.stop()
+
+    @app.post('/api/converter/rename')
+    def converter_rename(payload: RenameRequest):
+        renames = [(it.source_path, it.new_name) for it in payload.items]
+        return {'results': converter.rename_files_in_place(renames)}
 
     return app

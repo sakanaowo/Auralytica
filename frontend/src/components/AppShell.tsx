@@ -2,8 +2,8 @@ import React from 'react';
 import { WorkflowState } from '../api/types';
 
 interface AppShellProps {
-  currentStep: 'import' | 'explore' | 'deduplicate' | 'download';
-  onNavigate: (step: 'import' | 'explore' | 'deduplicate' | 'download') => void;
+  currentStep: 'import' | 'explore' | 'deduplicate' | 'download' | 'convert';
+  onNavigate: (step: 'import' | 'explore' | 'deduplicate' | 'download' | 'convert') => void;
   workflow?: WorkflowState;
   children: React.ReactNode;
 }
@@ -14,11 +14,12 @@ export const AppShell: React.FC<AppShellProps> = ({
   workflow,
   children,
 }) => {
-  const steps: Array<{ key: 'import' | 'explore' | 'deduplicate' | 'download'; label: string; num: string }> = [
+  const steps: Array<{ key: 'import' | 'explore' | 'deduplicate' | 'download' | 'convert'; label: string; num: string }> = [
     { key: 'import', label: 'Import', num: '01' },
     { key: 'explore', label: 'Explore', num: '02' },
     { key: 'deduplicate', label: 'Deduplicate', num: '03' },
     { key: 'download', label: 'Download', num: '04' },
+    { key: 'convert', label: 'Apple Music', num: '05' },
   ];
 
   return (

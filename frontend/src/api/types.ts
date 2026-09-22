@@ -197,3 +197,58 @@ export interface DownloadBatch {
   error: string | null;
   items: DownloadBatchItem[];
 }
+
+export interface ConverterItem {
+  source_path: string;
+  filename: string;
+  raw_stem: string;
+  suffix: string;
+  size: number;
+  video_id: string | null;
+  cleaned_stem: string;
+  artist: string;
+  title: string;
+  is_apple_compatible: boolean;
+  suggested_apple_filename: string;
+}
+
+export interface ConverterScanResponse {
+  directory: string;
+  total: number;
+  compatible_count: number;
+  incompatible_count: number;
+  has_video_id_count: number;
+  items: ConverterItem[];
+}
+
+export interface ConverterStatus {
+  state: 'idle' | 'running' | 'completed' | 'paused' | 'failed';
+  format: 'm4a_alac' | 'm4a_aac' | 'mp3';
+  output_dir: string;
+  total: number;
+  completed: number;
+  failed: number;
+  current_file: string;
+  items: Array<{
+    source: string;
+    target: string;
+    status: 'completed' | 'failed';
+    error: string | null;
+  }>;
+  error: string | null;
+  started_at: number | null;
+  finished_at: number | null;
+}
+
+export interface ConverterStartPayload {
+  directory: string;
+  output_dir: string;
+  format: 'm4a_alac' | 'm4a_aac' | 'mp3';
+  remove_source?: boolean;
+  items?: Array<{
+    source_path: string;
+    cleaned_stem?: string;
+    artist?: string;
+    title?: string;
+  }>;
+}

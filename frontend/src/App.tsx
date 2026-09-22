@@ -6,13 +6,14 @@ import { ImportView } from './features/import/ImportView';
 import { ExploreView } from './features/explore/ExploreView';
 import { DedupView } from './features/dedup/DedupView';
 import { DownloadView } from './features/download/DownloadView';
+import { ConvertView } from './features/convert/ConvertView';
 
-type Step = 'import' | 'explore' | 'deduplicate' | 'download';
+type Step = 'import' | 'explore' | 'deduplicate' | 'download' | 'convert';
 
 export const App: React.FC = () => {
   const getInitialStep = (): Step => {
     const p = window.location.pathname.replace(/^\//, '').split('/')[0];
-    if (['import', 'explore', 'deduplicate', 'download'].includes(p)) {
+    if (['import', 'explore', 'deduplicate', 'download', 'convert'].includes(p)) {
       return p as Step;
     }
     return 'explore';
@@ -92,6 +93,14 @@ export const App: React.FC = () => {
 
           {currentStep === 'download' && (
             <DownloadView
+              batchLocked={!!workflow?.batch_locked}
+              onRefreshWorkflow={refetchWorkflow}
+              onNavigateConvert={() => navigate('convert')}
+            />
+          )}
+
+          {currentStep === 'convert' && (
+            <ConvertView
               batchLocked={!!workflow?.batch_locked}
               onRefreshWorkflow={refetchWorkflow}
             />

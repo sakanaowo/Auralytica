@@ -6,6 +6,7 @@ import { DownloadBatch, DownloadBatchItem } from '../../api/types';
 interface DownloadViewProps {
   batchLocked: boolean;
   onRefreshWorkflow: () => void;
+  onNavigateConvert?: () => void;
 }
 
 const BATCH_STATUS_LABELS: Record<string, string> = {
@@ -78,7 +79,11 @@ const ERROR_CODE_LABELS: Record<string, { label: string; color: string; desc: st
 
 type StatusFilter = 'all' | 'failed' | 'running' | 'queued' | 'completed';
 
-export const DownloadView: React.FC<DownloadViewProps> = ({ batchLocked, onRefreshWorkflow }) => {
+export const DownloadView: React.FC<DownloadViewProps> = ({
+  batchLocked,
+  onRefreshWorkflow,
+  onNavigateConvert,
+}) => {
   const queryClient = useQueryClient();
   const [outputDir, setOutputDir] = useState<string>(() => {
     try {
@@ -387,6 +392,27 @@ export const DownloadView: React.FC<DownloadViewProps> = ({ batchLocked, onRefre
                   }}
                 />
               </div>
+
+              {/* Step 05 Apple Music Callout Banner */}
+              {onNavigateConvert && completedCount > 0 && (
+                <div className="p-3.5 rounded-xl border border-white/10 bg-zinc-950/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div>
+                    <span className="font-semibold text-zinc-200">
+                      Đã có {completedCount} file audio trong thư mục
+                    </span>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Chuyển sang bước Apple Music để loại bỏ mã [video_id] thừa ở tên file và chuyển đổi sang M4A (ALAC / AAC).
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onNavigateConvert}
+                    className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/10 shrink-0 transition-colors"
+                  >
+                    Xử lý tên & Chuyển đổi Apple Music →
+                  </button>
+                </div>
+              )}
 
               {/* Diagnostic Error Banner (Only shown when there are failed items) */}
               {failedCount > 0 && (

@@ -9,6 +9,9 @@ import {
   DedupListResponse,
   DownloadPreviewData,
   DownloadBatch,
+  ConverterScanResponse,
+  ConverterStatus,
+  ConverterStartPayload,
 } from './types';
 
 export class ApiError extends Error {
@@ -176,4 +179,34 @@ export const api = {
       method: 'POST',
       body: formData,
     }),
+
+  // Converter
+  scanConverter: (directory?: string) => {
+    const sp = new URLSearchParams();
+    if (directory) sp.set('directory', directory);
+    const qs = sp.toString() ? `?${sp.toString()}` : '';
+    return request<ConverterScanResponse>(`/api/converter/scan${qs}`);
+  },
+
+  startConversion: (payload: ConverterStartPayload) =>
+    request<ConverterStatus>('/api/converter/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  getConverterStatus: () => request<ConverterStatus>('/api/converter/status'),
+
+  stopConversion: () => request<ConverterStatus>('/api/converter/stop', { method: 'POST' }),
+
+  renameFiles: (items: Array<{ source_path: string; new_name: string }>) =>
+    request<{ results: Array<{ source: string; target?: string; status: string; error?: string }> }>(
+      '/api/converter/rename',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      }
+    ),
 };
+
