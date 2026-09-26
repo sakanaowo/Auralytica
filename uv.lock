@@ -161,6 +161,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "mutagen" },
     { name = "python-multipart" },
     { name = "uvicorn" },
     { name = "yt-dlp", extra = ["default"] },
@@ -185,6 +186,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.141.1" },
+    { name = "mutagen", specifier = ">=1.47.0" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "uvicorn", specifier = ">=0.52.4" },
     { name = "yt-dlp", extras = ["default"], specifier = ">=2026.8.19" },

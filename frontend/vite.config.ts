@@ -3,9 +3,9 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react(), tailwindcss()],
-  base: '/static/',
+  base: command === 'serve' ? '/' : '/static/',
   build: {
     outDir: path.resolve(__dirname, '../src/auralytica/static'),
     emptyOutDir: true,
@@ -13,7 +13,13 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://127.0.0.1:8765',
+      '/api': {
+        target: 'http://127.0.0.1:8765',
+        changeOrigin: true,
+        headers: {
+          origin: 'http://127.0.0.1:8765',
+        },
+      },
     },
   },
-});
+}));
