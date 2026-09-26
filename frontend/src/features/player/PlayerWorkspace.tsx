@@ -444,8 +444,17 @@ export const PlayerWorkspace: React.FC = () => {
         <MetadataEditModal
           track={editingTrack}
           onClose={() => setEditingTrack(null)}
-          onSaved={() => {
+          onSaved={(updated) => {
             showToast('Đã cập nhật thông tin thẻ bài hát');
+            queryClient.setQueryData(['player-library'], (old: any) => {
+              if (!old || !old.tracks) return old;
+              return {
+                ...old,
+                tracks: old.tracks.map((t: PlayerTrack) =>
+                  t.path === editingTrack.path || t.path === updated.path ? updated : t
+                ),
+              };
+            });
             refetchLibrary();
           }}
         />

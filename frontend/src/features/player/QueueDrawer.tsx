@@ -77,7 +77,7 @@ export const QueueDrawer: React.FC = () => {
                 <div className="relative w-11 h-11 shrink-0 rounded-lg overflow-hidden bg-zinc-900 border border-white/10 flex items-center justify-center">
                   {currentTrack.has_cover_art ? (
                     <img
-                      src={api.getPlayerArtUrl(currentTrack.path)}
+                      src={api.getPlayerArtUrl(currentTrack.path, currentTrack.mtime_ns)}
                       alt={currentTrack.title}
                       className="w-full h-full object-cover"
                     />
@@ -131,7 +131,7 @@ export const QueueDrawer: React.FC = () => {
                     <div className="relative w-9 h-9 shrink-0 rounded-md overflow-hidden bg-zinc-900 border border-white/10 flex items-center justify-center">
                       {track.has_cover_art ? (
                         <img
-                          src={api.getPlayerArtUrl(track.path)}
+                          src={api.getPlayerArtUrl(track.path, track.mtime_ns)}
                           alt={track.title}
                           className="w-full h-full object-cover"
                         />

@@ -38,7 +38,7 @@ export const MetadataEditModal: React.FC<MetadataEditModalProps> = ({
       setYear(track.year || '');
       setRenameFile(false);
       setCoverFile(null);
-      setCoverPreview(track.has_cover_art ? api.getPlayerArtUrl(track.path) : null);
+      setCoverPreview(track.has_cover_art ? api.getPlayerArtUrl(track.path, track.mtime_ns) : null);
       setError(null);
       setSuccess(false);
     }
@@ -77,7 +77,7 @@ export const MetadataEditModal: React.FC<MetadataEditModalProps> = ({
         cover_file: coverFile,
       });
 
-      updateTrackInState(updated);
+      updateTrackInState(updated, track.path);
       onSaved(updated);
       setSuccess(true);
       setTimeout(() => {

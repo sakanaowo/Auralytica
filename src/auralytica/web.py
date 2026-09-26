@@ -208,6 +208,14 @@ class PlayerScanRequest(BaseModel):
     folder: str | None = None
 
 
+class SaveLyricsRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    path: str
+    plain_lyrics: str | None = None
+    synced_lyrics: str | None = None
+    is_instrumental: bool = False
+
+
 
 def _import_uploads(database, uploads):
     names = {}
@@ -600,13 +608,31 @@ def create_app(database: str | Path | None = None, *, port=8765, max_body_bytes=
         return player.stream_audio_file(track_path, range_header=range)
 
     @app.get('/api/player/art')
-    def player_art(path: Annotated[str, Query(min_length=1, max_length=4096)]):
+    def player_art(path: Annotated[str, Query(min_length=1, max_length=4096)],
+                   mtime: Annotated[int | None, Query()] = None):
         track_path = Path(path).expanduser().resolve()
         art = player.extract_cover_art(track_path)
         if not art:
             raise HTTPException(404, 'Không có ảnh bìa nhúng.')
         data, mime = art
         return Response(content=data, media_type=mime, headers={'Cache-Control': 'public, max-age=86400'})
+
+    @app.get('/api/player/lyrics')
+    def player_lyrics(path: Annotated[str, Query(min_length=1, max_length=4096)],
+                      refresh: Annotated[bool, Query()] = False):
+        with closing(open_database(database)) as db:
+            return player.get_lyrics(db, path, force_refresh=refresh)
+
+    @app.post('/api/player/lyrics')
+    def player_save_lyrics(payload: SaveLyricsRequest):
+        with closing(open_database(database)) as db:
+            return player.save_lyrics(
+                db,
+                track_path=payload.path,
+                plain_lyrics=payload.plain_lyrics,
+                synced_lyrics=payload.synced_lyrics,
+                is_instrumental=payload.is_instrumental,
+            )
 
     @app.post('/api/player/metadata')
     async def player_save_metadata(

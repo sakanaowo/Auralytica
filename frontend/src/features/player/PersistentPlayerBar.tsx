@@ -86,7 +86,7 @@ export const PersistentPlayerBar: React.FC<{ onEditTrack?: (trackPath: string) =
             >
               {currentTrack.has_cover_art ? (
                 <img
-                  src={api.getPlayerArtUrl(currentTrack.path)}
+                  src={api.getPlayerArtUrl(currentTrack.path, currentTrack.mtime_ns)}
                   alt={currentTrack.title}
                   className="w-full h-full object-cover transition-transform group-hover:scale-105"
                 />

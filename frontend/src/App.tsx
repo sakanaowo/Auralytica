@@ -32,7 +32,7 @@ export const App: React.FC = () => {
         }
       }
     } catch { }
-    return { mode: 'player', step: 'explore' };
+    return { mode: 'takeout', step: 'import' };
   };
 
   const [appMode, setAppMode] = useState<AppMode>(() => getInitialRoute().mode);

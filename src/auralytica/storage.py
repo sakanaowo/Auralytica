@@ -6,7 +6,7 @@ import sqlite3
 from collections.abc import Iterator
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class BatchBusyError(ValueError):
@@ -226,6 +226,18 @@ CREATE INDEX idx_track_cache_artist ON player_track_cache(artist);
 CREATE INDEX idx_track_cache_album ON player_track_cache(album);
 """
 
+_SCHEMA_V6 = """
+CREATE TABLE player_lyrics_cache (
+    track_path TEXT PRIMARY KEY,
+    plain_lyrics TEXT,
+    synced_lyrics TEXT,
+    is_instrumental INTEGER NOT NULL DEFAULT 0 CHECK(is_instrumental IN (0,1)),
+    source TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_lyrics_cache_path ON player_lyrics_cache(track_path);
+"""
+
 
 @contextmanager
 def transaction(db: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
@@ -284,6 +296,11 @@ def open_database(path: str | Path) -> sqlite3.Connection:
                     if statement.strip():
                         db.execute(statement)
                 db.execute("PRAGMA user_version=5")
+            if version < 6:
+                for statement in _SCHEMA_V6.split(';'):
+                    if statement.strip():
+                        db.execute(statement)
+                db.execute("PRAGMA user_version=6")
         return db
     except BaseException:
         db.close()

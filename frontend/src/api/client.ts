@@ -18,6 +18,7 @@ import {
   PlayerPlaylist,
   PlayerPlaylistTrack,
   PlayerMetadataUpdatePayload,
+  PlayerLyrics,
   ImportSessionsResponse,
 } from './types';
 
@@ -268,7 +269,28 @@ export const api = {
     }),
 
   getPlayerStreamUrl: (path: string) => `/api/player/stream?path=${encodeURIComponent(path)}`,
-  getPlayerArtUrl: (path: string) => `/api/player/art?path=${encodeURIComponent(path)}`,
+  getPlayerArtUrl: (path: string, mtime?: number) => {
+    const base = `/api/player/art?path=${encodeURIComponent(path)}`;
+    return mtime ? `${base}&mtime=${mtime}` : base;
+  },
+
+  getPlayerLyrics: (path: string, refresh?: boolean) => {
+    const sp = new URLSearchParams({ path });
+    if (refresh) sp.set('refresh', 'true');
+    return request<PlayerLyrics>(`/api/player/lyrics?${sp.toString()}`);
+  },
+
+  savePlayerLyrics: (payload: {
+    path: string;
+    plain_lyrics?: string;
+    synced_lyrics?: string;
+    is_instrumental?: boolean;
+  }) =>
+    request<PlayerLyrics>('/api/player/lyrics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
 
   updateTrackMetadata: (payload: PlayerMetadataUpdatePayload) => {
     const formData = new FormData();

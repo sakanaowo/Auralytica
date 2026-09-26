@@ -80,7 +80,7 @@ class DedupTests(unittest.TestCase):
         self.assertNotIn('bbbbbbbbbbb', {member['video_id'] for member in shoujo['members']})
 
     def test_schema_four_migration_keeps_existing_review_data(self):
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 5)
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 6)
         self.assertEqual(self.db.execute("SELECT user_group FROM videos WHERE id='aaaaaaaaaaa'").fetchone()[0], 'music')
         tables = {row[0] for row in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertTrue({'song_aliases', 'dedup_runs', 'dedup_groups', 'dedup_members',

@@ -138,3 +138,85 @@ class PlayerUIBrowserTests(unittest.TestCase):
             expect(page.locator('text=Phím tắt điều khiển')).not_to_be_visible()
 
             browser.close()
+
+    def test_player_lyrics_and_metadata_edit(self):
+        music_dir = self.root / 'music'
+        music_dir.mkdir(parents=True, exist_ok=True)
+        f_mp3 = music_dir / 'Artist - Song.mp3'
+        f_mp3.write_bytes(b"\xff\xfb\x90\x44" + b"\x00" * 1000)
+        from mutagen.id3 import ID3, APIC, TIT2, TPE1
+        tags = ID3()
+        tags.add(TIT2(encoding=3, text="Test Title"))
+        tags.add(TPE1(encoding=3, text="Test Artist"))
+        tags.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=b"\xff\xd8\xff\xe0dummyjpeg"))
+        tags.save(str(f_mp3))
+
+        lrc_file = music_dir / 'Artist - Song.lrc'
+        lrc_file.write_text("[00:00.00] Intro\n[00:05.00] Synced line test\n", encoding='utf-8')
+
+        from auralytica import storage
+        with storage.open_database(self.root / 'state.sqlite3') as db:
+            db.execute("INSERT OR REPLACE INTO download_batches(id, output_dir, status) VALUES (1, ?, 'completed')", (str(music_dir),))
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(viewport={'width': 1280, 'height': 800})
+
+            # Navigate to /player
+            page.goto(f'{self.url}/player')
+
+            # Wait for library scan and track row
+            track_row = page.locator('tbody tr').first
+            expect(track_row).to_be_visible(timeout=7000)
+
+            # Click track to play
+            track_row.click()
+
+            # Open right sidebar via footer button
+            info_btn = page.locator('button[title*="Xem thông tin bài đang phát"]')
+            info_btn.click()
+            expect(page.locator('aside button:has-text("Đang phát")')).to_be_visible(timeout=5000)
+
+            # Check cover art image is displayed (not the placeholder)
+            cover_img = page.locator('aside img[alt="Test Title"]')
+            expect(cover_img).to_be_visible(timeout=5000)
+            expect(page.locator('text=Không có ảnh bìa nhúng')).not_to_be_visible()
+
+            # Check lyrics view is showing synced lyrics from .lrc
+            expect(page.locator('aside button:has-text("Lời bài hát")')).to_be_visible()
+            expect(page.locator('text=Đồng bộ theo thời gian')).to_be_visible(timeout=5000)
+            expect(page.locator('text=Synced line test')).to_be_visible()
+
+            # Switch to Specs sub-tab
+            specs_btn = page.locator('aside button:has-text("Thông số tệp")')
+            specs_btn.click()
+            expect(page.locator('aside').locator('text=Thông số tệp âm thanh')).to_be_visible()
+            expect(page.locator('aside').locator('text=Thời lượng')).to_be_visible()
+            expect(page.locator('aside').locator('text=Đường dẫn tệp cục bộ')).to_be_visible()
+
+            # Open Edit Metadata modal
+            edit_btn = page.locator('aside button[title*="Chỉnh sửa thông tin thẻ"]')
+            edit_btn.click()
+            expect(page.locator('text=Chỉnh sửa thông tin bài hát')).to_be_visible()
+
+            # Edit title
+            title_input = page.locator('input[placeholder*="Nơi Này Có Anh"]')
+            title_input.click()
+            title_input.fill('Brand New Song Title')
+
+            # Save
+            save_btn = page.locator('button:has-text("Lưu thông tin")')
+            save_btn.click()
+
+            # Modal closes automatically
+            expect(page.locator('text=Chỉnh sửa thông tin bài hát')).not_to_be_visible(timeout=5000)
+
+            # Verify right sidebar immediately reflects new title
+            expect(page.locator('aside h2:has-text("Brand New Song Title")')).to_be_visible(timeout=5000)
+
+            # Verify cover art image is STILL visible without F5 reload
+            cover_img_after = page.locator('aside img[alt="Brand New Song Title"]')
+            expect(cover_img_after).to_be_visible(timeout=5000)
+            expect(page.locator('aside').locator('text=Không có ảnh bìa nhúng')).not_to_be_visible()
+
+            browser.close()

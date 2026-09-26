@@ -63,7 +63,7 @@ export const TrackGridView: React.FC<TrackGridViewProps> = ({
               <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-zinc-900 border border-white/10 shadow-md">
                 {track.has_cover_art ? (
                   <img
-                    src={api.getPlayerArtUrl(track.path)}
+                    src={api.getPlayerArtUrl(track.path, track.mtime_ns)}
                     alt={track.title}
                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                     loading="lazy"

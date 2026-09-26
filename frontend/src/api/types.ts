@@ -311,6 +311,14 @@ export interface PlayerMetadataUpdatePayload {
   cover_file?: File | null;
 }
 
+export interface PlayerLyrics {
+  track_path: string;
+  plain_lyrics: string | null;
+  synced_lyrics: string | null;
+  is_instrumental: boolean;
+  source: 'lrclib' | 'file' | 'embedded' | 'manual' | 'not_found' | 'none';
+}
+
 export interface ImportSessionStatistics {
   raw_events?: number;
   parsed_events?: number;

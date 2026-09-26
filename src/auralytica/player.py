@@ -9,6 +9,7 @@ from collections.abc import Generator
 from datetime import datetime, timezone
 import hashlib
 import io
+import json
 import logging
 import mimetypes
 import os
@@ -18,6 +19,8 @@ import sqlite3
 import subprocess
 import tempfile
 from typing import Any
+import urllib.parse
+import urllib.request
 
 import mutagen
 from mutagen.id3 import ID3, TIT2, TPE1, TALB, TCON, TDRC, APIC, ID3NoHeaderError
@@ -146,6 +149,7 @@ def _extract_track_metadata(path: Path) -> dict[str, Any]:
         'file_size': stat.st_size,
         'mtime_ns': stat.st_mtime_ns,
         'has_art': int(has_art),
+        'has_cover_art': bool(has_art),
     }
 
 
@@ -393,6 +397,7 @@ def save_track_metadata(
             db.execute("DELETE FROM player_track_cache WHERE track_path=?", (str(path.resolve()),))
             db.execute("UPDATE player_playlist_tracks SET track_path=? WHERE track_path=?", (str(final_path.resolve()), str(path.resolve())))
             db.execute("UPDATE player_favorites SET track_path=? WHERE track_path=?", (str(final_path.resolve()), str(path.resolve())))
+            db.execute("UPDATE player_lyrics_cache SET track_path=? WHERE track_path=?", (str(final_path.resolve()), str(path.resolve())))
 
         db.execute(
             "INSERT INTO player_track_cache "
@@ -410,6 +415,9 @@ def save_track_metadata(
             )
         )
 
+    meta['has_cover_art'] = bool(meta.get('has_art'))
+    fav_row = db.execute("SELECT 1 FROM player_favorites WHERE track_path=?", (str(final_path.resolve()),)).fetchone()
+    meta['is_favorite'] = bool(fav_row)
     return meta
 
 
@@ -685,3 +693,247 @@ def import_m3u8(db: sqlite3.Connection, name: str, m3u_text: str, base_dir: Path
     if paths:
         add_tracks_to_playlist(db, pl['id'], paths)
     return get_playlist(db, pl['id'])
+
+
+# ---------------------------------------------------------------------------
+# Lyrics Retrieval & Management (LRCLIB, Embedded, .lrc sidecar)
+# ---------------------------------------------------------------------------
+
+def _clean_lrc_to_plain(text: str) -> str:
+    lines = []
+    for line in text.splitlines():
+        cleaned = re.sub(r'\[\d{2}:\d{2}(?:\.\d{1,3})?\]\s*', '', line).strip()
+        if cleaned:
+            lines.append(cleaned)
+    return "\n".join(lines)
+
+
+def _check_sidecar_lrc(path: Path) -> tuple[str | None, str | None]:
+    """Check for a .lrc sidecar file next to the audio file.
+    Returns (plain_lyrics, synced_lyrics).
+    """
+    lrc_path = path.with_suffix('.lrc')
+    if lrc_path.is_file():
+        try:
+            content = lrc_path.read_text(encoding='utf-8', errors='replace').strip()
+            if content:
+                if re.search(r'\[\d{2}:\d{2}', content):
+                    plain = _clean_lrc_to_plain(content)
+                    return plain or None, content
+                return content, None
+        except OSError:
+            pass
+    return None, None
+
+
+def _extract_embedded_lyrics(path: Path) -> tuple[str | None, str | None]:
+    """Check for embedded lyrics in audio tags.
+    Returns (plain_lyrics, synced_lyrics).
+    """
+    ext = path.suffix.lower()
+    plain: str | None = None
+    synced: str | None = None
+
+    try:
+        if ext == '.mp3':
+            try:
+                tags = ID3(str(path))
+            except Exception:
+                tags = None
+            if tags:
+                for key, frame in tags.items():
+                    if key.startswith('USLT'):
+                        plain = str(frame.text) if hasattr(frame, 'text') else str(frame)
+                        break
+        elif ext in {'.m4a', '.mp4'}:
+            tags = MP4(str(path))
+            lyr = tags.get('\xa9lyr')
+            if lyr:
+                plain = str(lyr[0]) if isinstance(lyr, (list, tuple)) else str(lyr)
+        elif ext in {'.flac', '.opus', '.ogg'}:
+            audio = mutagen.File(str(path))
+            if audio and hasattr(audio, 'get'):
+                lyr = audio.get('lyrics') or audio.get('unsyncedlyrics') or audio.get('LYRICS')
+                if lyr:
+                    plain = str(lyr[0]) if isinstance(lyr, (list, tuple)) else str(lyr)
+    except Exception:
+        pass
+
+    if plain and re.search(r'\[\d{2}:\d{2}', plain):
+        synced = plain
+        plain = _clean_lrc_to_plain(plain)
+
+    return (plain or None), (synced or None)
+
+
+def _fetch_lrclib_lyrics(title: str, artist: str, duration: float | None = None) -> dict[str, Any] | None:
+    """Fetch lyrics from LRCLIB public API (https://lrclib.net)."""
+    if not title:
+        return None
+    headers = {'User-Agent': 'Auralytica/1.0 (https://github.com/sakanaowo/Auralytica)'}
+
+    # 1. Exact match via /api/get
+    params = {'track_name': title}
+    if artist and artist != 'Unknown Artist':
+        params['artist_name'] = artist
+    if duration and duration > 0:
+        params['duration'] = int(round(duration))
+
+    query_str = urllib.parse.urlencode(params)
+    url = f"https://lrclib.net/api/get?{query_str}"
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=3.5) as res:
+            if res.status == 200:
+                data = json.loads(res.read().decode('utf-8'))
+                return {
+                    'plain_lyrics': data.get('plainLyrics'),
+                    'synced_lyrics': data.get('syncedLyrics'),
+                    'is_instrumental': bool(data.get('instrumental')),
+                    'source': 'lrclib',
+                }
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            logging.debug("LRCLIB /api/get HTTP error %s for %s", exc.code, title)
+    except Exception as exc:
+        logging.debug("LRCLIB /api/get error: %s", exc)
+
+    # 2. Search fallback via /api/search
+    search_q = f"{artist} {title}".strip() if artist and artist != 'Unknown Artist' else title
+    search_url = f"https://lrclib.net/api/search?{urllib.parse.urlencode({'q': search_q})}"
+    search_req = urllib.request.Request(search_url, headers=headers)
+    try:
+        with urllib.request.urlopen(search_req, timeout=3.5) as res:
+            if res.status == 200:
+                items = json.loads(res.read().decode('utf-8'))
+                if isinstance(items, list) and len(items) > 0:
+                    first = items[0]
+                    return {
+                        'plain_lyrics': first.get('plainLyrics'),
+                        'synced_lyrics': first.get('syncedLyrics'),
+                        'is_instrumental': bool(first.get('instrumental')),
+                        'source': 'lrclib',
+                    }
+    except Exception as exc:
+        logging.debug("LRCLIB /api/search error: %s", exc)
+
+    return None
+
+
+def _save_lyrics_to_cache(db: sqlite3.Connection, data: dict[str, Any]) -> None:
+    now = _now_iso()
+    with transaction(db):
+        db.execute(
+            "INSERT INTO player_lyrics_cache "
+            "(track_path, plain_lyrics, synced_lyrics, is_instrumental, source, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(track_path) DO UPDATE SET "
+            "plain_lyrics=excluded.plain_lyrics, synced_lyrics=excluded.synced_lyrics, "
+            "is_instrumental=excluded.is_instrumental, source=excluded.source, updated_at=excluded.updated_at",
+            (
+                data['track_path'],
+                data['plain_lyrics'],
+                data['synced_lyrics'],
+                1 if data.get('is_instrumental') else 0,
+                data.get('source', 'unknown'),
+                now,
+            ),
+        )
+
+
+def get_lyrics(db: sqlite3.Connection, track_path: str, force_refresh: bool = False) -> dict[str, Any]:
+    """Retrieve lyrics for a given track from cache, sidecar .lrc, embedded tags, or LRCLIB."""
+    path = Path(track_path).expanduser().resolve()
+    str_path = str(path)
+
+    if not force_refresh:
+        row = db.execute("SELECT * FROM player_lyrics_cache WHERE track_path=?", (str_path,)).fetchone()
+        if row:
+            return {
+                'track_path': str_path,
+                'plain_lyrics': row['plain_lyrics'],
+                'synced_lyrics': row['synced_lyrics'],
+                'is_instrumental': bool(row['is_instrumental']),
+                'source': row['source'],
+            }
+
+    # 1. Sidecar .lrc
+    sidecar_plain, sidecar_synced = _check_sidecar_lrc(path)
+    if sidecar_plain or sidecar_synced:
+        data = {
+            'track_path': str_path,
+            'plain_lyrics': sidecar_plain,
+            'synced_lyrics': sidecar_synced,
+            'is_instrumental': False,
+            'source': 'file',
+        }
+        _save_lyrics_to_cache(db, data)
+        return data
+
+    # 2. Embedded tags
+    emb_plain, emb_synced = _extract_embedded_lyrics(path)
+    if emb_plain or emb_synced:
+        data = {
+            'track_path': str_path,
+            'plain_lyrics': emb_plain,
+            'synced_lyrics': emb_synced,
+            'is_instrumental': False,
+            'source': 'embedded',
+        }
+        _save_lyrics_to_cache(db, data)
+        return data
+
+    # 3. LRCLIB public API
+    meta_row = db.execute("SELECT title, artist, duration FROM player_track_cache WHERE track_path=?", (str_path,)).fetchone()
+    if meta_row:
+        title = meta_row['title']
+        artist = meta_row['artist']
+        duration = float(meta_row['duration'] or 0)
+    else:
+        meta = _extract_track_metadata(path)
+        title = meta['title']
+        artist = meta['artist']
+        duration = float(meta['duration'] or 0)
+
+    lrclib_data = _fetch_lrclib_lyrics(title=title, artist=artist or '', duration=duration)
+    if lrclib_data:
+        data = {
+            'track_path': str_path,
+            'plain_lyrics': lrclib_data['plain_lyrics'],
+            'synced_lyrics': lrclib_data['synced_lyrics'],
+            'is_instrumental': lrclib_data['is_instrumental'],
+            'source': lrclib_data['source'],
+        }
+        _save_lyrics_to_cache(db, data)
+        return data
+
+    # 4. Not found -> record empty in cache so we don't spam the network
+    data = {
+        'track_path': str_path,
+        'plain_lyrics': None,
+        'synced_lyrics': None,
+        'is_instrumental': False,
+        'source': 'not_found',
+    }
+    _save_lyrics_to_cache(db, data)
+    return data
+
+
+def save_lyrics(
+    db: sqlite3.Connection,
+    track_path: str,
+    plain_lyrics: str | None = None,
+    synced_lyrics: str | None = None,
+    is_instrumental: bool = False,
+) -> dict[str, Any]:
+    """Manually update or override lyrics for a track."""
+    path = str(Path(track_path).expanduser().resolve())
+    data = {
+        'track_path': path,
+        'plain_lyrics': plain_lyrics,
+        'synced_lyrics': synced_lyrics,
+        'is_instrumental': is_instrumental,
+        'source': 'manual',
+    }
+    _save_lyrics_to_cache(db, data)
+    return data

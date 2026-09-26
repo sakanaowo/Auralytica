@@ -116,7 +116,7 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
                     <div className="w-10 h-10 shrink-0 rounded-lg overflow-hidden bg-zinc-900 border border-white/10 flex items-center justify-center">
                       {track.has_cover_art ? (
                         <img
-                          src={api.getPlayerArtUrl(track.path)}
+                          src={api.getPlayerArtUrl(track.path, track.mtime_ns)}
                           alt={track.title}
                           className="w-full h-full object-cover"
                           loading="lazy"

@@ -1,6 +1,7 @@
 """Unit tests for Auralytica Local Media Player backend engine."""
 
 import io
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -21,10 +22,10 @@ class PlayerBackendTests(unittest.TestCase):
         self.db = storage.open_database(self.db_path)
         self.addCleanup(self.db.close)
 
-    def test_database_schema_v5_creates_player_tables(self):
+    def test_database_schema_v6_creates_player_tables(self):
         tables = {row[0] for row in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        self.assertTrue({'player_playlists', 'player_playlist_tracks', 'player_favorites', 'player_track_cache'} <= tables)
-        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 5)
+        self.assertTrue({'player_playlists', 'player_playlist_tracks', 'player_favorites', 'player_track_cache', 'player_lyrics_cache'} <= tables)
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 6)
 
     def test_scanner_detects_audio_files_and_caches_metadata(self):
         # Create dummy audio files
@@ -234,5 +235,95 @@ class PlayerBackendTests(unittest.TestCase):
         )
         self.assertEqual(res_meta.status_code, 200)
         self.assertEqual(res_meta.json()['title'], "Renamed API Song")
+        self.assertIn('has_cover_art', res_meta.json())
+        self.assertIn('is_favorite', res_meta.json())
+
+        # 6. Lyrics API
+        res_lyrics_get = client.get(f"/api/player/lyrics?path={f1.resolve()}", headers=headers)
+        self.assertEqual(res_lyrics_get.status_code, 200)
+
+        # 7. Lyrics Save API
+        res_lyrics_post = client.post(
+            "/api/player/lyrics",
+            json={
+                "path": str(f1.resolve()),
+                "plain_lyrics": "Sample plain lyrics",
+                "synced_lyrics": "[00:10.00] Line one\n[00:15.00] Line two",
+                "is_instrumental": False,
+            },
+            headers=headers,
+        )
+        self.assertEqual(res_lyrics_post.status_code, 200)
+        lyrics_data = res_lyrics_post.json()
+        self.assertEqual(lyrics_data['plain_lyrics'], "Sample plain lyrics")
+        self.assertEqual(lyrics_data['source'], "manual")
+
+        # 8. Verify get lyrics returns the saved lyrics
+        res_lyrics_check = client.get(f"/api/player/lyrics?path={f1.resolve()}", headers=headers)
+        self.assertEqual(res_lyrics_check.status_code, 200)
+        self.assertEqual(res_lyrics_check.json()['plain_lyrics'], "Sample plain lyrics")
+
+    def test_save_track_metadata_preserves_has_cover_art_and_is_favorite(self):
+        from mutagen.id3 import ID3, APIC, TIT2, TPE1
+        f = self.music_dir / "art_test.mp3"
+        f.write_bytes(b"\xff\xfb\x90\x44" + b"\x00" * 1000)
+        tags = ID3()
+        tags.add(TIT2(encoding=3, text="Original Title"))
+        tags.add(TPE1(encoding=3, text="Original Artist"))
+        tags.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=b"\xff\xd8\xff\xe0dummyjpeg"))
+        tags.save(str(f))
+
+        # Scan and mark favorite
+        player.scan_library(self.db, self.music_dir)
+        player.toggle_favorite(self.db, str(f.resolve()))
+
+        # Save metadata change without uploading cover art
+        updated = player.save_track_metadata(
+            self.db,
+            file_path=str(f.resolve()),
+            title="Updated Title",
+            artist="Updated Artist",
+        )
+        self.assertTrue(updated['has_cover_art'], "has_cover_art must remain True after editing metadata")
+        self.assertEqual(updated['has_art'], 1)
+        self.assertTrue(updated['is_favorite'], "is_favorite must remain True after editing metadata")
+
+    def test_lyrics_sidecar_lrc_detection(self):
+        f = self.music_dir / "song_with_lrc.mp3"
+        f.write_bytes(b"dummy-audio")
+        lrc_file = self.music_dir / "song_with_lrc.lrc"
+        lrc_file.write_text("[00:05.10] Hello world\n[00:10.50] Second line\n", encoding="utf-8")
+
+        data = player.get_lyrics(self.db, str(f.resolve()))
+        self.assertEqual(data['source'], 'file')
+        self.assertFalse(data['is_instrumental'])
+        self.assertIn("[00:05.10]", data['synced_lyrics'])
+        self.assertEqual(data['plain_lyrics'], "Hello world\nSecond line")
+
+    def test_lyrics_lrclib_mocked(self):
+        from unittest.mock import patch, MagicMock
+        f = self.music_dir / "lrclib_song.mp3"
+        f.write_bytes(b"dummy-audio")
+
+        mock_response = MagicMock()
+        mock_response.__enter__.return_value = mock_response
+        mock_response.status = 200
+        mock_response.read.return_value = json.dumps({
+            "plainLyrics": "Online plain lyrics",
+            "syncedLyrics": "[00:01.00] Line 1",
+            "instrumental": False,
+        }).encode("utf-8")
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            data = player.get_lyrics(self.db, str(f.resolve()), force_refresh=True)
+            self.assertEqual(data['source'], 'lrclib')
+            self.assertEqual(data['plain_lyrics'], "Online plain lyrics")
+            self.assertEqual(data['synced_lyrics'], "[00:01.00] Line 1")
+            self.assertFalse(data['is_instrumental'])
+
+        # Verify it is now cached in DB
+        row = self.db.execute("SELECT * FROM player_lyrics_cache WHERE track_path=?", (str(f.resolve()),)).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row['source'], 'lrclib')
 
 

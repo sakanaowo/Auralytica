@@ -49,7 +49,7 @@ interface AudioPlayerContextType {
   toggleQueueOpen: () => void;
   setIsQueueOpen: (open: boolean) => void;
   toggleFavorite: (trackPath: string) => Promise<void>;
-  updateTrackInState: (track: PlayerTrack) => void;
+  updateTrackInState: (track: PlayerTrack, oldPath?: string) => void;
 }
 
 const AudioPlayerContext = createContext<AudioPlayerContextType | null>(null);
@@ -377,9 +377,10 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, []);
 
-  const updateTrackInState = useCallback((track: PlayerTrack) => {
-    setCurrentTrack((prev) => (prev && prev.path === track.path ? track : prev));
-    setQueue((prev) => prev.map((t) => (t.path === track.path ? track : t)));
+  const updateTrackInState = useCallback((track: PlayerTrack, oldPath?: string) => {
+    const targetPath = oldPath || track.path;
+    setCurrentTrack((prev) => (prev && (prev.path === targetPath || prev.path === track.path) ? track : prev));
+    setQueue((prev) => prev.map((t) => (t.path === targetPath || t.path === track.path ? track : t)));
   }, []);
 
   return (
