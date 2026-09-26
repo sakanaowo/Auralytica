@@ -8,10 +8,96 @@ import { TrackTableView } from './TrackTableView';
 import { TrackGridView } from './TrackGridView';
 import { MetadataEditModal } from './MetadataEditModal';
 import { PlaylistModal } from './PlaylistModal';
+import { PlayerRightSidebar } from './PlayerRightSidebar';
+import { useAudioPlayer } from '../../context/AudioPlayerContext';
 import { Music, FolderSearch, Loader2 } from 'lucide-react';
 
 export const PlayerWorkspace: React.FC = () => {
   const queryClient = useQueryClient();
+  const { rightPanelTab } = useAudioPlayer();
+
+  // Resizable Sidebars State & Persistence
+  const [leftWidth, setLeftWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('auralytica_player_left_width');
+      if (saved) {
+        const val = Number(saved);
+        if (!isNaN(val) && val >= 180 && val <= 420) return val;
+      }
+    } catch {}
+    return 240;
+  });
+
+  const [rightWidth, setRightWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('auralytica_player_right_width');
+      if (saved) {
+        const val = Number(saved);
+        if (!isNaN(val) && val >= 240 && val <= 500) return val;
+      }
+    } catch {}
+    return 320;
+  });
+
+  const handleLeftResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = leftWidth;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const newWidth = Math.max(180, Math.min(420, startWidth + delta));
+      setLeftWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setLeftWidth((w) => {
+        try {
+          localStorage.setItem('auralytica_player_left_width', String(w));
+        } catch {}
+        return w;
+      });
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  const handleRightResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = rightWidth;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = startX - moveEvent.clientX;
+      const newWidth = Math.max(240, Math.min(500, startWidth + delta));
+      setRightWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setRightWidth((w) => {
+        try {
+          localStorage.setItem('auralytica_player_right_width', String(w));
+        } catch {}
+        return w;
+      });
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
 
   // Navigation State
   const [currentSection, setCurrentSection] = useState<PlayerNavSection>({ type: 'all' });
@@ -195,7 +281,7 @@ export const PlayerWorkspace: React.FC = () => {
   const favoritesCount = useMemo(() => allTracks.filter((t) => t.is_favorite).length, [allTracks]);
 
   return (
-    <div className="flex-1 flex overflow-hidden relative">
+    <div className="flex-1 min-h-0 flex overflow-hidden relative">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="absolute top-4 right-4 z-50 px-4 py-2 rounded-xl bg-zinc-800 text-white text-xs border border-white/10 shadow-2xl animate-in fade-in slide-in-from-top-2">
@@ -203,8 +289,9 @@ export const PlayerWorkspace: React.FC = () => {
         </div>
       )}
 
-      {/* Sidebar */}
+      {/* Left Sidebar */}
       <PlayerSidebar
+        width={leftWidth}
         currentSection={currentSection}
         onSelectSection={setCurrentSection}
         playlists={playlists}
@@ -226,8 +313,23 @@ export const PlayerWorkspace: React.FC = () => {
         onExportM3U={handleExportM3U}
       />
 
+      {/* Left Resizer Handle */}
+      <div
+        onMouseDown={handleLeftResizeStart}
+        onDoubleClick={() => {
+          setLeftWidth(240);
+          try {
+            localStorage.setItem('auralytica_player_left_width', '240');
+          } catch {}
+        }}
+        className="w-1.5 hover:w-2 hover:bg-emerald-500/50 active:bg-emerald-500 cursor-col-resize z-30 transition-all select-none group flex items-center justify-center shrink-0 -mx-0.5"
+        title="Kéo để chỉnh độ rộng thư viện (Nhấp đúp để đặt lại 240px)"
+      >
+        <div className="w-0.5 h-6 bg-white/20 group-hover:bg-white/60 rounded-full transition-colors" />
+      </div>
+
       {/* Center Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[#09090b]">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-[#09090b] overflow-hidden">
         {/* Header Bar */}
         <PlayerHeader
           currentFolder={libraryData?.folder || ''}
@@ -311,6 +413,31 @@ export const PlayerWorkspace: React.FC = () => {
           />
         )}
       </div>
+
+      {/* Right Resizer Handle */}
+      {rightPanelTab && (
+        <div
+          onMouseDown={handleRightResizeStart}
+          onDoubleClick={() => {
+            setRightWidth(320);
+            try {
+              localStorage.setItem('auralytica_player_right_width', '320');
+            } catch {}
+          }}
+          className="w-1.5 hover:w-2 hover:bg-emerald-500/50 active:bg-emerald-500 cursor-col-resize z-30 transition-all select-none group flex items-center justify-center shrink-0 -mx-0.5"
+          title="Kéo để chỉnh độ rộng thông tin (Nhấp đúp để đặt lại 320px)"
+        >
+          <div className="w-0.5 h-6 bg-white/20 group-hover:bg-white/60 rounded-full transition-colors" />
+        </div>
+      )}
+
+      {/* Docked Right Sidebar */}
+      <PlayerRightSidebar
+        width={rightWidth}
+        onEditTrack={(track) => setEditingTrack(track)}
+        playlists={playlists}
+        onAddToPlaylist={handleAddToPlaylist}
+      />
 
       {/* Edit Metadata Modal */}
       {editingTrack && (

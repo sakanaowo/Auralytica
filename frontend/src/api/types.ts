@@ -184,6 +184,7 @@ export interface DownloadBatch {
   format?: AudioFormat;
   clean_names?: boolean;
   embed_metadata?: boolean;
+  concurrency?: number;
   total: number;
   queued?: number;
   skipped?: number;

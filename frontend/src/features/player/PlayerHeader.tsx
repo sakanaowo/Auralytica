@@ -6,7 +6,9 @@ import {
   LayoutList,
   LayoutGrid,
   ArrowUpDown,
+  Keyboard,
 } from 'lucide-react';
+import { useAudioPlayer } from '../../context/AudioPlayerContext';
 
 export type ViewMode = 'table' | 'grid';
 export type SortOption = 'title_asc' | 'title_desc' | 'artist' | 'duration' | 'recent';
@@ -36,6 +38,8 @@ export const PlayerHeader: React.FC<PlayerHeaderProps> = ({
   onSortOptionChange,
   totalFilteredTracks,
 }) => {
+  const { setIsShortcutsOpen } = useAudioPlayer();
+
   return (
     <header className="shrink-0 p-4 border-b border-white/10 bg-[#09090b]/80 backdrop-blur-md flex flex-wrap items-center justify-between gap-4 select-none">
       {/* Folder Path & Rescan */}
@@ -135,6 +139,17 @@ export const PlayerHeader: React.FC<PlayerHeaderProps> = ({
             <LayoutGrid className="w-3.5 h-3.5" />
           </button>
         </div>
+
+        {/* Keyboard Shortcuts Trigger Button */}
+        <button
+          type="button"
+          onClick={() => setIsShortcutsOpen(true)}
+          className="p-1.5 rounded-lg bg-zinc-900 border border-white/10 text-zinc-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-all flex items-center gap-1.5 text-xs"
+          title="Xem danh sách phím tắt (?)"
+        >
+          <Keyboard className="w-3.5 h-3.5" />
+          <span className="hidden lg:inline text-[11px] text-zinc-400">Phím tắt</span>
+        </button>
 
         {/* Count badge */}
         <span className="text-[11px] font-mono text-zinc-500 hidden md:inline">

@@ -412,3 +412,35 @@ print(json.dumps({'type':'result','path':str(p),'id':sys.argv[-2],'acodec':'opus
             self.assertNotIn("[Audio]", f.name)
             self.assertNotIn("[0000000000", f.name)
             self.assertGreater(f.stat().st_size, 1000)
+
+    def test_concurrent_downloads_execute_in_parallel(self):
+        import threading
+        active_counter = [0]
+        max_active = [0]
+        lock = threading.Lock()
+
+        def parallel_adapter(video_id, directory, progress, stopped, lock_fd):
+            with lock:
+                active_counter[0] += 1
+                if active_counter[0] > max_active[0]:
+                    max_active[0] = active_counter[0]
+            try:
+                time.sleep(0.08)
+                path = directory / "audio.webm"
+                path.write_bytes(b"parallel audio")
+                progress(10, 10)
+                return {"path": str(path), "id": video_id, "acodec": "opus", "vcodec": "none"}
+            finally:
+                with lock:
+                    active_counter[0] -= 1
+
+        batches.pause_batch(self.db, self.batch)
+        batch_info = batches.create_batch(self.db, self.root / "parallel_audio", concurrency=3)
+        self.assertEqual(batch_info.get("concurrency"), 3)
+
+        result = downloader.run_batch(self.db, batch_info["batch_id"], adapter=parallel_adapter, concurrency=3)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["counts"]["completed"], 3)
+        self.assertGreaterEqual(max_active[0], 2)
+        published = list((self.root / "parallel_audio").glob("*.webm"))
+        self.assertEqual(len(published), 3)

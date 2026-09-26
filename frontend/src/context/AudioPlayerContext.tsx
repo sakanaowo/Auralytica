@@ -14,6 +14,8 @@ interface PlayerStorageState {
 
 const STORAGE_KEY = 'auralytica_player_state_v1';
 
+export type RightPanelTab = 'now-playing' | 'queue' | null;
+
 interface AudioPlayerContextType {
   currentTrack: PlayerTrack | null;
   isPlaying: boolean;
@@ -25,6 +27,11 @@ interface AudioPlayerContextType {
   isShuffled: boolean;
   queue: PlayerTrack[];
   isQueueOpen: boolean;
+  rightPanelTab: RightPanelTab;
+  setRightPanelTab: (tab: RightPanelTab) => void;
+  toggleRightPanel: (tab: 'now-playing' | 'queue') => void;
+  isShortcutsOpen: boolean;
+  setIsShortcutsOpen: (open: boolean) => void;
   playTrack: (track: PlayerTrack, newQueue?: PlayerTrack[]) => void;
   togglePlay: () => void;
   pause: () => void;
@@ -89,7 +96,47 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>(initialState.repeatMode);
   const [isShuffled, setIsShuffled] = useState<boolean>(initialState.isShuffled);
   const [queue, setQueue] = useState<PlayerTrack[]>(initialState.queue);
-  const [isQueueOpen, setIsQueueOpen] = useState<boolean>(false);
+  const [rightPanelTab, setRightPanelTabState] = useState<RightPanelTab>(() => {
+    try {
+      const saved = localStorage.getItem('auralytica_player_right_panel_tab');
+      if (saved === 'now-playing' || saved === 'queue') return saved;
+    } catch {}
+    return null;
+  });
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
+
+  const setRightPanelTab = useCallback((tab: RightPanelTab) => {
+    setRightPanelTabState(tab);
+    try {
+      if (tab) {
+        localStorage.setItem('auralytica_player_right_panel_tab', tab);
+      } else {
+        localStorage.removeItem('auralytica_player_right_panel_tab');
+      }
+    } catch {}
+  }, []);
+
+  const toggleRightPanel = useCallback((tab: 'now-playing' | 'queue') => {
+    setRightPanelTabState((prev) => {
+      const next = prev === tab ? null : tab;
+      try {
+        if (next) {
+          localStorage.setItem('auralytica_player_right_panel_tab', next);
+        } else {
+          localStorage.removeItem('auralytica_player_right_panel_tab');
+        }
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const isQueueOpen = rightPanelTab === 'queue';
+  const setIsQueueOpen = useCallback((open: boolean) => {
+    setRightPanelTab(open ? 'queue' : null);
+  }, [setRightPanelTab]);
+  const toggleQueueOpen = useCallback(() => {
+    toggleRightPanel('queue');
+  }, [toggleRightPanel]);
 
   // Play history for back button tracking
   const historyRef = useRef<PlayerTrack[]>([]);
@@ -311,10 +358,6 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setQueue([]);
   }, []);
 
-  const toggleQueueOpen = useCallback(() => {
-    setIsQueueOpen((prev) => !prev);
-  }, []);
-
   const toggleFavorite = useCallback(async (trackPath: string) => {
     try {
       const res = await api.togglePlayerFavorite(trackPath);
@@ -352,6 +395,11 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         isShuffled,
         queue,
         isQueueOpen,
+        rightPanelTab,
+        setRightPanelTab,
+        toggleRightPanel,
+        isShortcutsOpen,
+        setIsShortcutsOpen,
         playTrack,
         togglePlay,
         pause,

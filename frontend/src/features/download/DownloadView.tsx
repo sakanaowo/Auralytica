@@ -107,6 +107,15 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
     }
   });
 
+  const [concurrency, setConcurrency] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('auralytica-concurrency');
+      return saved ? parseInt(saved, 10) || 3 : 3;
+    } catch {
+      return 3;
+    }
+  });
+
   // Clean names & embed metadata are now always enabled by default
   const cleanNames = true;
   const embedMetadata = true;
@@ -116,8 +125,9 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
     try {
       localStorage.setItem('auralytica-output', outputDir);
       localStorage.setItem('auralytica-format', format);
+      localStorage.setItem('auralytica-concurrency', String(concurrency));
     } catch { }
-  }, [outputDir, format]);
+  }, [outputDir, format, concurrency]);
 
   // Batches list query (polling based on active status)
   const batchesQuery = useQuery({
@@ -177,7 +187,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
     mutationFn: () => {
       const token = previewQuery.data?.token;
       if (!token) throw new Error('Chưa có preview token hợp lệ.');
-      return api.startDownload(outputDir.trim(), token, format, cleanNames, embedMetadata);
+      return api.startDownload(outputDir.trim(), token, format, cleanNames, embedMetadata, concurrency);
     },
     onSuccess: (data) => {
       setSelectedBatchId(data.batch_id);
@@ -434,6 +444,54 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
           </div>
         </div>
 
+        {/* Concurrency / Multi-threaded Settings */}
+        <div className="pt-3 border-t border-white/5 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+              Số luồng tải song song (đa luồng)
+            </div>
+            <span className="text-xs font-mono text-zinc-400">
+              {concurrency === 1 ? '1 bài / lần (tuần tự)' : `Tải ${concurrency} bài cùng lúc`}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+            {[
+              { count: 1, label: '1 luồng', badge: 'Tuần tự' },
+              { count: 2, label: '2 luồng', badge: 'An toàn' },
+              { count: 3, label: '3 luồng', badge: 'Khuyên dùng' },
+              { count: 4, label: '4 luồng', badge: 'Nhanh' },
+              { count: 6, label: '6 luồng', badge: 'Tối đa' },
+            ].map((opt) => (
+              <button
+                key={opt.count}
+                type="button"
+                disabled={batchLocked}
+                onClick={() => setConcurrency(opt.count)}
+                className={`text-center p-3 rounded-xl border transition-all ${
+                  concurrency === opt.count
+                    ? 'bg-sky-500/15 text-white border-sky-400/40 shadow-[0_0_12px_rgba(56,189,248,0.12)] ring-1 ring-sky-400/20'
+                    : 'bg-zinc-950/40 text-zinc-300 border-white/5 hover:border-white/20 hover:bg-zinc-900/40'
+                }`}
+              >
+                <div className="font-semibold text-xs text-zinc-100 mb-1">{opt.label}</div>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded font-medium ${
+                    concurrency === opt.count
+                      ? 'bg-sky-500/25 text-sky-200 border border-sky-400/30'
+                      : 'bg-white/5 text-zinc-400 border border-white/5'
+                  }`}
+                >
+                  {opt.badge}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Mẹo: Mức 3 luồng cân bằng tối ưu giữa tốc độ tải song song và tránh việc YouTube áp dụng hạn chế tần suất IP.
+          </p>
+        </div>
+
         {errorMsg && (
           <div className="p-3 rounded-lg bg-red-950/40 border border-red-800/40 text-red-300 text-xs flex justify-between items-center">
             <span>{errorMsg}</span>
@@ -476,7 +534,8 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
           </div>
 
           {currentBatch && (() => {
-            const runningItem = currentBatch.items.find((i) => i.status === 'running');
+            const runningItems = currentBatch.items.filter((i) => i.status === 'running');
+            const runningItem = runningItems[0];
             const isCompleted = currentBatch.status === 'completed';
             const percent = Math.round((completedCount / Math.max(1, currentBatch.total)) * 100);
 
@@ -521,7 +580,20 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
 
                       {/* Track info & Live State */}
                       <div className="flex-1 min-w-0 pr-2">
-                        {runningItem ? (
+                        {runningItems.length > 1 ? (
+                          <>
+                            <div className="text-xs font-mono text-sky-400 flex items-center gap-1.5 mb-0.5">
+                              <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+                              <span>Đang tải đa luồng ({runningItems.length} bài song song)...</span>
+                            </div>
+                            <div className="text-sm font-semibold text-zinc-100 truncate" title={runningItems.map(i => i.title || i.video_id).join(', ')}>
+                              {runningItem.title || runningItem.video_id} <span className="text-sky-300 font-normal text-xs">(+{runningItems.length - 1} bài khác)</span>
+                            </div>
+                            <div className="text-xs text-zinc-400 font-mono mt-0.5">
+                              Tải song song {currentBatch.concurrency || runningItems.length} luồng · Định dạng {currentBatch.format?.toUpperCase()}
+                            </div>
+                          </>
+                        ) : runningItem ? (
                           <>
                             <div className="text-xs font-mono text-sky-400 flex items-center gap-1.5 mb-0.5">
                               <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
@@ -562,6 +634,12 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
 
                     {/* Action buttons */}
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {['queued', 'running'].includes(currentBatch.status) && (
+                        <div className="px-2.5 py-1 text-xs font-mono rounded-lg bg-sky-500/10 text-sky-300 border border-sky-500/20 flex items-center gap-1">
+                          <span>⚡</span>
+                          <span>{currentBatch.concurrency || concurrency} luồng song song</span>
+                        </div>
+                      )}
 
                       {['queued', 'running'].includes(currentBatch.status) && (
                         <button

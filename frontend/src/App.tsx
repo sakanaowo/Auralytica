@@ -20,11 +20,39 @@ export const App: React.FC = () => {
     if (['import', 'explore', 'deduplicate', 'download'].includes(p)) {
       return { mode: 'takeout', step: p as Step };
     }
-    return { mode: 'takeout', step: 'explore' };
+    try {
+      const saved = localStorage.getItem('auralytica_last_route');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.mode === 'player') {
+          return { mode: 'player', step: 'explore' };
+        }
+        if (parsed.mode === 'takeout' && ['import', 'explore', 'deduplicate', 'download'].includes(parsed.step)) {
+          return { mode: 'takeout', step: parsed.step as Step };
+        }
+      }
+    } catch { }
+    return { mode: 'player', step: 'explore' };
   };
 
   const [appMode, setAppMode] = useState<AppMode>(() => getInitialRoute().mode);
   const [currentStep, setCurrentStep] = useState<Step>(() => getInitialRoute().step);
+
+  // Sync route to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('auralytica_last_route', JSON.stringify({ mode: appMode, step: currentStep }));
+    } catch { }
+  }, [appMode, currentStep]);
+
+  // Normalize root URL to restored view
+  useEffect(() => {
+    const p = window.location.pathname.replace(/^\//, '').split('/')[0];
+    if (!p) {
+      const target = appMode === 'player' ? '/player' : `/${currentStep}`;
+      window.history.replaceState(null, '', target);
+    }
+  }, []);
 
   // Sync with browser back/forward
   useEffect(() => {

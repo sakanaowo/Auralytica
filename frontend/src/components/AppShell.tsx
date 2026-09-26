@@ -2,6 +2,8 @@ import React from 'react';
 import { WorkflowState } from '../api/types';
 import { PersistentPlayerBar } from '../features/player/PersistentPlayerBar';
 import { QueueDrawer } from '../features/player/QueueDrawer';
+import { ShortcutsModal } from '../features/player/ShortcutsModal';
+import { usePlayerShortcuts } from '../hooks/usePlayerShortcuts';
 import { FolderDown, Headphones } from 'lucide-react';
 
 export type AppMode = 'takeout' | 'player';
@@ -23,6 +25,9 @@ export const AppShell: React.FC<AppShellProps> = ({
   workflow,
   children,
 }) => {
+  // Activate global keyboard shortcuts (Space, Left/Right arrow, Seek, Mute, etc.)
+  usePlayerShortcuts();
+
   const steps: Array<{
     key: 'import' | 'explore' | 'deduplicate' | 'download';
     label: string;
@@ -35,7 +40,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   ];
 
   return (
-    <div className="relative min-h-screen bg-[#09090b] text-zinc-100 flex flex-col font-sans selection:bg-zinc-800">
+    <div className="relative h-screen w-screen overflow-hidden bg-[#09090b] text-zinc-100 flex flex-col font-sans selection:bg-zinc-800">
       {/* Subtle ambient lighting for frosted glass reflection */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
         <div className="absolute top-[-10%] left-[20%] w-[600px] h-[600px] rounded-full bg-zinc-800/15 blur-[140px]" />
@@ -43,7 +48,7 @@ export const AppShell: React.FC<AppShellProps> = ({
       </div>
 
       {/* Top Header Bar */}
-      <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#09090b]/80 backdrop-blur-xl px-4 md:px-6 py-2.5 flex items-center justify-between gap-4 select-none">
+      <header className="shrink-0 z-40 border-b border-white/[0.08] bg-[#09090b]/80 backdrop-blur-xl px-4 md:px-6 py-2.5 flex items-center justify-between gap-4 select-none">
         {/* Left: Brand + Mode Switcher */}
         <div className="flex items-center gap-4 shrink-0">
           <div className="flex items-center gap-2">
@@ -140,12 +145,12 @@ export const AppShell: React.FC<AppShellProps> = ({
 
       {/* Main Content Area */}
       <main
-        className={`relative z-10 flex-1 flex flex-col ${
+        className={`relative z-10 flex-1 min-h-0 flex flex-col ${
           appMode === 'player'
-            ? 'h-[calc(100vh-53px-80px)] overflow-hidden'
+            ? 'overflow-hidden'
             : currentStep === 'explore'
-            ? 'h-[calc(100vh-53px-80px)] overflow-hidden p-4'
-            : 'p-6 pb-28'
+            ? 'overflow-hidden p-4'
+            : 'overflow-y-auto p-6 pb-6'
         }`}
       >
         {children}
@@ -154,8 +159,11 @@ export const AppShell: React.FC<AppShellProps> = ({
       {/* Persistent Bottom Audio Player Bar */}
       <PersistentPlayerBar />
 
-      {/* Right Slide-over Queue Drawer */}
-      <QueueDrawer />
+      {/* Right Slide-over Queue Drawer (Only in Takeout Studio mode, since PlayerWorkspace has docked right sidebar) */}
+      {appMode !== 'player' && <QueueDrawer />}
+
+      {/* Global Keyboard Shortcuts Modal */}
+      <ShortcutsModal />
     </div>
   );
 };

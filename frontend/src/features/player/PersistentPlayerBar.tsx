@@ -14,6 +14,8 @@ import {
   Heart,
   ListMusic,
   Music,
+  Disc,
+  Keyboard,
 } from 'lucide-react';
 
 export const PersistentPlayerBar: React.FC<{ onEditTrack?: (trackPath: string) => void }> = ({
@@ -37,8 +39,11 @@ export const PersistentPlayerBar: React.FC<{ onEditTrack?: (trackPath: string) =
     toggleRepeat,
     nextTrack,
     previousTrack,
-    toggleQueueOpen,
     toggleFavorite,
+    rightPanelTab,
+    toggleRightPanel,
+    setRightPanelTab,
+    setIsShortcutsOpen,
   } = useAudioPlayer();
 
   const [isSeeking, setIsSeeking] = useState(false);
@@ -69,15 +74,15 @@ export const PersistentPlayerBar: React.FC<{ onEditTrack?: (trackPath: string) =
   const progressPercent = duration > 0 ? (effectiveTime / duration) * 100 : 0;
 
   return (
-    <footer className="fixed bottom-0 left-0 right-0 z-50 h-20 bg-[#09090b]/95 backdrop-blur-2xl border-t border-white/10 px-4 md:px-6 flex items-center justify-between gap-4 select-none">
+    <footer className="h-20 shrink-0 z-50 bg-[#09090b]/95 backdrop-blur-2xl border-t border-white/10 px-4 md:px-6 flex items-center justify-between gap-4 select-none">
       {/* Left: Track Information & Favorite */}
       <div className="flex items-center gap-3 w-1/4 min-w-[200px] max-w-[320px]">
         {currentTrack ? (
           <>
             <div
               className="relative w-12 h-12 shrink-0 rounded-lg overflow-hidden bg-zinc-900 border border-white/10 cursor-pointer group"
-              onClick={() => onEditTrack?.(currentTrack.path)}
-              title="Nhấn để xem hoặc sửa thông tin bài hát"
+              onClick={() => (onEditTrack ? onEditTrack(currentTrack.path) : setRightPanelTab('now-playing'))}
+              title="Nhấn để xem thông tin bài hát (I)"
             >
               {currentTrack.has_cover_art ? (
                 <img
@@ -96,7 +101,7 @@ export const PersistentPlayerBar: React.FC<{ onEditTrack?: (trackPath: string) =
               <p
                 className="text-xs font-semibold text-zinc-100 truncate hover:underline cursor-pointer"
                 title={currentTrack.title || currentTrack.filename}
-                onClick={() => onEditTrack?.(currentTrack.path)}
+                onClick={() => (onEditTrack ? onEditTrack(currentTrack.path) : setRightPanelTab('now-playing'))}
               >
                 {currentTrack.title || currentTrack.filename}
               </p>
@@ -285,17 +290,45 @@ export const PersistentPlayerBar: React.FC<{ onEditTrack?: (trackPath: string) =
           </div>
         </div>
 
+        {/* Now Playing View Toggle */}
+        <button
+          type="button"
+          onClick={() => toggleRightPanel('now-playing')}
+          className={`relative p-2 rounded-lg transition-colors ${
+            rightPanelTab === 'now-playing'
+              ? 'text-emerald-400 bg-white/10 shadow-sm'
+              : 'text-zinc-400 hover:text-white hover:bg-white/10'
+          }`}
+          title="Xem thông tin bài đang phát (I)"
+        >
+          <Disc className="w-4 h-4" />
+        </button>
+
         {/* Queue Toggle */}
         <button
           type="button"
-          onClick={toggleQueueOpen}
-          className="relative p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
-          title="Mở danh sách hàng đợi"
+          onClick={() => toggleRightPanel('queue')}
+          className={`relative p-2 rounded-lg transition-colors ${
+            rightPanelTab === 'queue'
+              ? 'text-emerald-400 bg-white/10 shadow-sm'
+              : 'text-zinc-400 hover:text-white hover:bg-white/10'
+          }`}
+          title="Mở danh sách hàng đợi (Q)"
         >
           <ListMusic className="w-4 h-4" />
           {queue.length > 0 && (
             <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400" />
           )}
+        </button>
+
+        {/* Shortcuts Trigger */}
+        <button
+          type="button"
+          onClick={() => setIsShortcutsOpen(true)}
+          className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+          title="Phím tắt điều khiển (?)"
+        >
+          <Keyboard className="w-4 h-4" />
         </button>
       </div>
     </footer>
