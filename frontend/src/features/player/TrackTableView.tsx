@@ -54,7 +54,7 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 pb-28 select-none">
+    <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6 select-none">
       <table className="w-full text-left border-collapse">
         {/* Table Header */}
         <thead className="sticky top-0 z-20 bg-[#09090b]/95 backdrop-blur-md border-b border-white/10 text-[11px] font-mono uppercase tracking-wider text-zinc-400">

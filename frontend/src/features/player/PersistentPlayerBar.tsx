@@ -74,7 +74,7 @@ export const PersistentPlayerBar: React.FC<{ onEditTrack?: (trackPath: string) =
   const progressPercent = duration > 0 ? (effectiveTime / duration) * 100 : 0;
 
   return (
-    <footer className="fixed bottom-0 left-0 right-0 z-50 h-20 bg-[#09090b]/95 backdrop-blur-2xl border-t border-white/10 px-4 md:px-6 flex items-center justify-between gap-4 select-none">
+    <footer className="h-20 shrink-0 z-50 bg-[#09090b]/95 backdrop-blur-2xl border-t border-white/10 px-4 md:px-6 flex items-center justify-between gap-4 select-none">
       {/* Left: Track Information & Favorite */}
       <div className="flex items-center gap-3 w-1/4 min-w-[200px] max-w-[320px]">
         {currentTrack ? (
