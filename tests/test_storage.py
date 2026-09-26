@@ -28,8 +28,8 @@ class StorageTests(unittest.TestCase):
         self.seed(db)
         reopened = self.open()
         tables = {row[0] for row in reopened.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        self.assertTrue({'imports', 'watch_events', 'videos', 'channel_decisions', 'download_batches', 'download_items', 'settings'} <= tables)
-        self.assertEqual(reopened.execute("PRAGMA user_version").fetchone()[0], 4)
+        self.assertTrue({'imports', 'watch_events', 'videos', 'channel_decisions', 'download_batches', 'download_items', 'settings', 'player_playlists', 'player_playlist_tracks', 'player_favorites', 'player_track_cache'} <= tables)
+        self.assertEqual(reopened.execute("PRAGMA user_version").fetchone()[0], 5)
         self.assertEqual(reopened.execute("SELECT title FROM videos").fetchone()[0], 'Nhạc 音楽')
 
     def test_transaction_rolls_back_all_changes_on_constraint_failure(self):
@@ -148,13 +148,14 @@ class StorageTests(unittest.TestCase):
             legacy.execute("INSERT INTO download_batches(id,output_dir,status) VALUES(1,'/audio','completed')")
             legacy.execute("INSERT INTO download_items(batch_id,video_id,status,file_path) VALUES(1,'abcdefghijk','completed','/audio/source.webm')")
         db = self.open()
-        self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 4)
+        self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 5)
         self.assertEqual(storage.get_video(db, 'abcdefghijk')['effective_group'], 'music')
         self.assertEqual(db.execute('SELECT file_path FROM download_items').fetchone()[0], '/audio/source.webm')
         tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertTrue({'audit_runs','audit_events','metadata_items','metadata_cache',
                          'classification_previews','song_aliases','dedup_runs','dedup_groups',
-                         'dedup_members','download_selections','rejected_groups'} <= tables)
+                         'dedup_members','download_selections','rejected_groups',
+                         'player_playlists','player_playlist_tracks','player_favorites','player_track_cache'} <= tables)
 
     def test_database_copy_preserves_manual_download_selection_and_rejects_old_code(self):
         db = self.open()
@@ -172,7 +173,7 @@ class StorageTests(unittest.TestCase):
             db.backup(destination)
 
         with storage.open_database(copy_path) as reopened:
-            self.assertEqual(reopened.execute('PRAGMA user_version').fetchone()[0], 4)
+            self.assertEqual(reopened.execute('PRAGMA user_version').fetchone()[0], 5)
             self.assertEqual(storage.get_video(reopened, 'video000001')['user_group'], 'music')
             self.assertEqual(tuple(reopened.execute(
                 'SELECT status,file_path,file_size FROM download_items').fetchone()),
@@ -185,7 +186,7 @@ class StorageTests(unittest.TestCase):
         with patch.object(storage, 'SCHEMA_VERSION', 3), self.assertRaisesRegex(ValueError, 'newer'):
             storage.open_database(copy_path)
         with sqlite3.connect(copy_path) as untouched:
-            self.assertEqual(untouched.execute('PRAGMA user_version').fetchone()[0], 4)
+            self.assertEqual(untouched.execute('PRAGMA user_version').fetchone()[0], 5)
             self.assertEqual(untouched.execute(
                 'SELECT user_group FROM videos WHERE id=\'video000001\'').fetchone()[0], 'music')
             self.assertEqual(untouched.execute(

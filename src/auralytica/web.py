@@ -4,19 +4,20 @@ from contextlib import closing
 from pathlib import Path, PurePosixPath
 import hashlib
 import json
+import re
 import sqlite3
 import tempfile
 from typing import Annotated, Any, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
+from fastapi import FastAPI, HTTPException, Query, Request, Form, File, Header, UploadFile
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
-from starlette.datastructures import Headers, UploadFile
+from starlette.datastructures import Headers, UploadFile as StarletteUploadFile
 
 from . import download_controls as downloads
-from . import converter, dedup, enrichment, metadata
+from . import converter, dedup, enrichment, metadata, player
 from .importer import import_folder
 from .explore import summary as explore_summary
 from .review import list_videos, move_videos
@@ -163,6 +164,50 @@ class RenameRequest(BaseModel):
     items: list[RenameItem] = Field(min_length=1, max_length=5000)
 
 
+class CreatePlaylistRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    name: Annotated[str, StringConstraints(min_length=1, max_length=200)]
+    description: str = ""
+
+
+class UpdatePlaylistRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    name: Annotated[str, StringConstraints(min_length=1, max_length=200)]
+    description: str | None = None
+
+
+class PlaylistTracksRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    track_paths: list[str]
+
+
+class PlaylistTrackDeleteRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    track_path: str
+
+
+class PlaylistReorderRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    ordered_paths: list[str]
+
+
+class ToggleFavoriteRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    track_path: str
+
+
+class ImportM3URequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    name: Annotated[str, StringConstraints(min_length=1, max_length=200)]
+    m3u_text: str
+
+
+class PlayerScanRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    folder: str | None = None
+
+
+
 def _import_uploads(database, uploads):
     names = {}
     for upload in uploads:
@@ -188,8 +233,15 @@ def _import_uploads(database, uploads):
             return import_folder(db, root)
 
 
-def create_app(database: str | Path, *, port=8765, max_body_bytes=64 * 1024 * 1024):
-    if Path(database).expanduser().exists():
+DEFAULT_DATABASE = Path.home() / '.local/share/auralytica/library.sqlite3'
+
+
+def create_app(database: str | Path | None = None, *, port=8765, max_body_bytes=64 * 1024 * 1024):
+    if database is None:
+        database = DEFAULT_DATABASE
+    database = Path(database).expanduser()
+    database.parent.mkdir(parents=True, exist_ok=True)
+    if database.exists():
         with closing(open_database(database)) as startup_db:
             metadata.recover_interrupted(startup_db)
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -237,6 +289,7 @@ def create_app(database: str | Path, *, port=8765, max_body_bytes=64 * 1024 * 10
     @app.get('/deduplicate')
     @app.get('/download')
     @app.get('/convert')
+    @app.get('/player')
     def workflow_page():
         return FileResponse(static / 'index.html')
 
@@ -400,7 +453,7 @@ def create_app(database: str | Path, *, port=8765, max_body_bytes=64 * 1024 * 10
     async def imports(request: Request):
         async with request.form(max_files=2, max_fields=0) as form:
             entries = form.multi_items()
-            if any(key != 'files' or not isinstance(value, UploadFile) for key, value in entries):
+            if any(key != 'files' or not isinstance(value, (UploadFile, StarletteUploadFile)) for key, value in entries):
                 raise HTTPException(400, 'Gửi các file đã chọn bằng trường multipart files.')
             return await run_in_threadpool(_import_uploads, database, [value for _, value in entries])
 
@@ -491,5 +544,165 @@ def create_app(database: str | Path, *, port=8765, max_body_bytes=64 * 1024 * 10
     def converter_rename(payload: RenameRequest):
         renames = [(it.source_path, it.new_name) for it in payload.items]
         return {'results': converter.rename_files_in_place(renames)}
+
+    # -----------------------------------------------------------------------
+    # Local Media Player Endpoints
+    # -----------------------------------------------------------------------
+
+    @app.get('/api/player/library')
+    def player_library(folder: Annotated[str | None, Query(max_length=4096)] = None):
+        target_dir = folder
+        with closing(open_database(database)) as db:
+            if not target_dir:
+                row = db.execute("SELECT output_dir FROM download_batches ORDER BY id DESC LIMIT 1").fetchone()
+                target_dir = row[0] if row else '~/Music/Auralytica'
+            return {'folder': target_dir, 'tracks': player.scan_library(db, target_dir)}
+
+    @app.post('/api/player/scan')
+    def player_scan(payload: PlayerScanRequest):
+        target_dir = payload.folder
+        with closing(open_database(database)) as db:
+            if not target_dir:
+                row = db.execute("SELECT output_dir FROM download_batches ORDER BY id DESC LIMIT 1").fetchone()
+                target_dir = row[0] if row else '~/Music/Auralytica'
+            tracks = player.scan_library(db, target_dir)
+            return {'folder': target_dir, 'count': len(tracks), 'tracks': tracks}
+
+    @app.get('/api/player/stream')
+    def player_stream(path: Annotated[str, Query(min_length=1, max_length=4096)],
+                      range: Annotated[str | None, Header()] = None):
+        track_path = Path(path).expanduser().resolve()
+        if not track_path.is_file():
+            raise HTTPException(404, 'Tệp âm thanh không tồn tại.')
+        return player.stream_audio_file(track_path, range_header=range)
+
+    @app.get('/api/player/art')
+    def player_art(path: Annotated[str, Query(min_length=1, max_length=4096)]):
+        track_path = Path(path).expanduser().resolve()
+        art = player.extract_cover_art(track_path)
+        if not art:
+            raise HTTPException(404, 'Không có ảnh bìa nhúng.')
+        data, mime = art
+        return Response(content=data, media_type=mime, headers={'Cache-Control': 'public, max-age=86400'})
+
+    @app.post('/api/player/metadata')
+    async def player_save_metadata(
+        path: Annotated[str, Form()],
+        title: Annotated[str, Form()],
+        artist: Annotated[str, Form()],
+        album: Annotated[str, Form()] = "",
+        genre: Annotated[str, Form()] = "",
+        year: Annotated[str, Form()] = "",
+        rename_file: Annotated[bool, Form()] = False,
+        cover_file: Annotated[UploadFile | None, File()] = None,
+    ):
+        cover_bytes = None
+        cover_mime = None
+        if cover_file and cover_file.filename:
+            cover_bytes = await cover_file.read()
+            cover_mime = cover_file.content_type
+
+        with closing(open_database(database)) as db:
+            try:
+                res = player.save_track_metadata(
+                    db,
+                    file_path=path,
+                    title=title,
+                    artist=artist,
+                    album=album,
+                    genre=genre,
+                    year=year,
+                    cover_bytes=cover_bytes,
+                    cover_mime=cover_mime,
+                    rename_file=rename_file,
+                )
+                return res
+            except Exception as exc:
+                raise HTTPException(400, str(exc))
+
+    @app.get('/api/player/playlists')
+    def player_playlists():
+        with closing(open_database(database)) as db:
+            return player.get_playlists(db)
+
+    @app.post('/api/player/playlists')
+    def player_create_playlist(payload: CreatePlaylistRequest):
+        with closing(open_database(database)) as db:
+            return player.create_playlist(db, payload.name, payload.description)
+
+    @app.get('/api/player/playlists/{playlist_id}')
+    def player_get_playlist(playlist_id: int):
+        with closing(open_database(database)) as db:
+            pl = player.get_playlist(db, playlist_id)
+            if not pl:
+                raise HTTPException(404, 'Playlist không tồn tại.')
+            return pl
+
+    @app.put('/api/player/playlists/{playlist_id}')
+    def player_update_playlist(playlist_id: int, payload: UpdatePlaylistRequest):
+        with closing(open_database(database)) as db:
+            pl = player.update_playlist(db, playlist_id, payload.name, payload.description)
+            if not pl:
+                raise HTTPException(404, 'Playlist không tồn tại.')
+            return pl
+
+    @app.delete('/api/player/playlists/{playlist_id}')
+    def player_delete_playlist(playlist_id: int):
+        with closing(open_database(database)) as db:
+            player.delete_playlist(db, playlist_id)
+            return {'status': 'deleted'}
+
+    @app.get('/api/player/playlists/{playlist_id}/tracks')
+    def player_playlist_tracks(playlist_id: int):
+        with closing(open_database(database)) as db:
+            return player.get_playlist_tracks(db, playlist_id)
+
+    @app.post('/api/player/playlists/{playlist_id}/tracks')
+    def player_add_playlist_tracks(playlist_id: int, payload: PlaylistTracksRequest):
+        with closing(open_database(database)) as db:
+            player.add_tracks_to_playlist(db, playlist_id, payload.track_paths)
+            return {'status': 'added', 'tracks': player.get_playlist_tracks(db, playlist_id)}
+
+    @app.post('/api/player/playlists/{playlist_id}/tracks/delete')
+    def player_remove_playlist_track(playlist_id: int, payload: PlaylistTrackDeleteRequest):
+        with closing(open_database(database)) as db:
+            player.remove_track_from_playlist(db, playlist_id, payload.track_path)
+            return {'status': 'removed', 'tracks': player.get_playlist_tracks(db, playlist_id)}
+
+    @app.put('/api/player/playlists/{playlist_id}/reorder')
+    def player_reorder_playlist(playlist_id: int, payload: PlaylistReorderRequest):
+        with closing(open_database(database)) as db:
+            player.reorder_playlist_tracks(db, playlist_id, payload.ordered_paths)
+            return {'status': 'reordered', 'tracks': player.get_playlist_tracks(db, playlist_id)}
+
+    @app.get('/api/player/playlists/{playlist_id}/export-m3u')
+    def player_export_m3u(playlist_id: int):
+        with closing(open_database(database)) as db:
+            pl = player.get_playlist(db, playlist_id)
+            if not pl:
+                raise HTTPException(404, 'Playlist không tồn tại.')
+            m3u = player.export_m3u8(db, playlist_id)
+            safe_name = re.sub(r'[\W_]+', '_', pl['name']).strip('_') or 'playlist'
+            return Response(
+                content=m3u,
+                media_type='audio/x-mpegurl',
+                headers={'Content-Disposition': f'attachment; filename="{safe_name}.m3u8"'},
+            )
+
+    @app.post('/api/player/playlists/import-m3u')
+    def player_import_m3u(payload: ImportM3URequest):
+        with closing(open_database(database)) as db:
+            return player.import_m3u8(db, payload.name, payload.m3u_text)
+
+    @app.post('/api/player/favorites/toggle')
+    def player_toggle_fav(payload: ToggleFavoriteRequest):
+        with closing(open_database(database)) as db:
+            is_fav = player.toggle_favorite(db, payload.track_path)
+            return {'track_path': payload.track_path, 'is_favorite': is_fav}
+
+    @app.get('/api/player/favorites')
+    def player_get_favs():
+        with closing(open_database(database)) as db:
+            return player.get_favorites(db)
 
     return app

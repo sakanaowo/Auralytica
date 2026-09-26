@@ -257,3 +257,56 @@ export interface ConverterStartPayload {
     title?: string;
   }>;
 }
+
+export interface PlayerTrack {
+  path: string;
+  filename: string;
+  title: string;
+  artist: string;
+  album: string;
+  genre: string;
+  year: string;
+  duration: number;
+  file_size: number;
+  mtime_ns: number;
+  has_cover_art: boolean;
+  is_favorite: boolean;
+}
+
+export interface PlayerLibraryResponse {
+  folder: string;
+  tracks: PlayerTrack[];
+}
+
+export interface PlayerPlaylist {
+  id: number;
+  name: string;
+  description: string;
+  track_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlayerPlaylistTrack {
+  track_path: string;
+  position: number;
+  added_at: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration: number;
+  has_cover_art: boolean;
+  is_favorite: boolean;
+}
+
+export interface PlayerMetadataUpdatePayload {
+  path: string;
+  title: string;
+  artist: string;
+  album?: string;
+  genre?: string;
+  year?: string;
+  rename_file?: boolean;
+  cover_file?: File | null;
+}
+

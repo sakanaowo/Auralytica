@@ -13,6 +13,11 @@ import {
   ConverterScanResponse,
   ConverterStatus,
   ConverterStartPayload,
+  PlayerTrack,
+  PlayerLibraryResponse,
+  PlayerPlaylist,
+  PlayerPlaylistTrack,
+  PlayerMetadataUpdatePayload,
 } from './types';
 
 export class ApiError extends Error {
@@ -221,5 +226,104 @@ export const api = {
         body: JSON.stringify({ items }),
       }
     ),
+
+  // Local Media Player
+  getPlayerLibrary: (folder?: string) => {
+    const sp = new URLSearchParams();
+    if (folder) sp.set('folder', folder);
+    const qs = sp.toString() ? `?${sp.toString()}` : '';
+    return request<PlayerLibraryResponse>(`/api/player/library${qs}`);
+  },
+
+  scanPlayerLibrary: (folder?: string) =>
+    request<{ folder: string; count: number; tracks: PlayerTrack[] }>('/api/player/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: folder || null }),
+    }),
+
+  getPlayerStreamUrl: (path: string) => `/api/player/stream?path=${encodeURIComponent(path)}`,
+  getPlayerArtUrl: (path: string) => `/api/player/art?path=${encodeURIComponent(path)}`,
+
+  updateTrackMetadata: (payload: PlayerMetadataUpdatePayload) => {
+    const formData = new FormData();
+    formData.append('path', payload.path);
+    formData.append('title', payload.title);
+    formData.append('artist', payload.artist);
+    if (payload.album) formData.append('album', payload.album);
+    if (payload.genre) formData.append('genre', payload.genre);
+    if (payload.year) formData.append('year', payload.year);
+    formData.append('rename_file', String(Boolean(payload.rename_file)));
+    if (payload.cover_file) {
+      formData.append('cover_file', payload.cover_file);
+    }
+    return request<PlayerTrack>('/api/player/metadata', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  getPlayerPlaylists: () => request<PlayerPlaylist[]>('/api/player/playlists'),
+
+  createPlayerPlaylist: (name: string, description?: string) =>
+    request<PlayerPlaylist>('/api/player/playlists', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description: description || '' }),
+    }),
+
+  getPlayerPlaylist: (id: number) => request<PlayerPlaylist>(`/api/player/playlists/${id}`),
+
+  updatePlayerPlaylist: (id: number, name: string, description?: string) =>
+    request<PlayerPlaylist>(`/api/player/playlists/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description }),
+    }),
+
+  deletePlayerPlaylist: (id: number) =>
+    request<{ status: string }>(`/api/player/playlists/${id}`, { method: 'DELETE' }),
+
+  getPlayerPlaylistTracks: (id: number) =>
+    request<PlayerPlaylistTrack[]>(`/api/player/playlists/${id}/tracks`),
+
+  addTracksToPlayerPlaylist: (id: number, trackPaths: string[]) =>
+    request<{ status: string; tracks: PlayerPlaylistTrack[] }>(`/api/player/playlists/${id}/tracks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ track_paths: trackPaths }),
+    }),
+
+  removeTrackFromPlayerPlaylist: (id: number, trackPath: string) =>
+    request<{ status: string; tracks: PlayerPlaylistTrack[] }>(`/api/player/playlists/${id}/tracks/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ track_path: trackPath }),
+    }),
+
+  reorderPlayerPlaylistTracks: (id: number, orderedPaths: string[]) =>
+    request<{ status: string; tracks: PlayerPlaylistTrack[] }>(`/api/player/playlists/${id}/reorder`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ordered_paths: orderedPaths }),
+    }),
+
+  exportPlayerPlaylistM3UUrl: (id: number) => `/api/player/playlists/${id}/export-m3u`,
+
+  importPlayerPlaylistM3U: (name: string, m3uText: string) =>
+    request<PlayerPlaylist>('/api/player/playlists/import-m3u', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, m3u_text: m3uText }),
+    }),
+
+  togglePlayerFavorite: (trackPath: string) =>
+    request<{ track_path: string; is_favorite: boolean }>('/api/player/favorites/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ track_path: trackPath }),
+    }),
+
+  getPlayerFavorites: () => request<string[]>('/api/player/favorites'),
 };
 

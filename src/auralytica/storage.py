@@ -6,7 +6,7 @@ import sqlite3
 from collections.abc import Iterator
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class BatchBusyError(ValueError):
@@ -188,6 +188,44 @@ CREATE TABLE rejected_groups (
 );
 """
 
+_SCHEMA_V5 = """
+CREATE TABLE player_playlists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE player_playlist_tracks (
+    playlist_id INTEGER NOT NULL REFERENCES player_playlists(id) ON DELETE CASCADE,
+    track_path TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(playlist_id, track_path)
+);
+CREATE INDEX idx_playlist_tracks_pos ON player_playlist_tracks(playlist_id, position);
+CREATE TABLE player_favorites (
+    track_path TEXT PRIMARY KEY,
+    added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE player_track_cache (
+    track_path TEXT PRIMARY KEY,
+    file_name TEXT NOT NULL,
+    title TEXT,
+    artist TEXT,
+    album TEXT,
+    genre TEXT,
+    year TEXT,
+    duration REAL DEFAULT 0,
+    file_size INTEGER NOT NULL,
+    mtime_ns INTEGER NOT NULL,
+    has_art INTEGER DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_track_cache_artist ON player_track_cache(artist);
+CREATE INDEX idx_track_cache_album ON player_track_cache(album);
+"""
+
 
 @contextmanager
 def transaction(db: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
@@ -241,6 +279,11 @@ def open_database(path: str | Path) -> sqlite3.Connection:
                     if statement.strip():
                         db.execute(statement)
                 db.execute("PRAGMA user_version=4")
+            if version < 5:
+                for statement in _SCHEMA_V5.split(';'):
+                    if statement.strip():
+                        db.execute(statement)
+                db.execute("PRAGMA user_version=5")
         return db
     except BaseException:
         db.close()
