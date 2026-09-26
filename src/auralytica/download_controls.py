@@ -63,12 +63,14 @@ def launch_worker(database, batch_id):
 
 def start_download(db, database, *, output_dir=None, preview_token=None, batch_id=None,
                    format_type='raw', clean_names=False, embed_metadata=False,
-                   launcher=launch_worker):
+                   concurrency=None, launcher=launch_worker):
     if batch_id is None:
         batch = create_batch(db, output_dir, expected_token=preview_token,
                              format_type=format_type, clean_names=clean_names,
-                             embed_metadata=embed_metadata)
+                             embed_metadata=embed_metadata, concurrency=concurrency)
     else:
+        if concurrency is not None:
+            set_setting(db, f'batch_concurrency:{batch_id}', str(max(1, min(int(concurrency), 8))))
         current = get_batch(db, batch_id)
         if current['status'] == 'running':
             recover_batch(db, batch_id)  # Refuses recovery while another worker holds the lock.

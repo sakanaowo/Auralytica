@@ -21,8 +21,10 @@ def get_batch(db, batch_id):
     fmt = get_setting(db, f'batch_format:{batch_id}') or 'raw'
     clean = get_setting(db, f'batch_clean_names:{batch_id}') == '1'
     embed = get_setting(db, f'batch_embed_metadata:{batch_id}') != '0'
+    concurrency_val = get_setting(db, f'batch_concurrency:{batch_id}')
+    concurrency = int(concurrency_val) if concurrency_val and concurrency_val.isdigit() else 3
     return dict(batch_id=row['id'], output_dir=row['output_dir'], status=row['status'],
-                format=fmt, clean_names=clean, embed_metadata=embed,
+                format=fmt, clean_names=clean, embed_metadata=embed, concurrency=concurrency,
                 total=sum(counts.values()), queued=counts.get('queued', 0),
                 skipped=counts.get('skipped', 0), counts=counts)
 
@@ -206,7 +208,7 @@ def eligible_snapshot(db, output_dir):
     }
 
 
-def create_batch(db, output_dir, *, expected_token=None, format_type='raw', clean_names=False, embed_metadata=False):
+def create_batch(db, output_dir, *, expected_token=None, format_type='raw', clean_names=False, embed_metadata=False, concurrency=None):
     """Snapshot all kept music, independent of any UI filters or pagination."""
     with transaction(db):
         active = _active(db)
@@ -227,6 +229,8 @@ def create_batch(db, output_dir, *, expected_token=None, format_type='raw', clea
         set_setting(db, f'batch_format:{batch_id}', format_type)
         set_setting(db, f'batch_clean_names:{batch_id}', '1' if clean_names else '0')
         set_setting(db, f'batch_embed_metadata:{batch_id}', '1' if embed_metadata else '0')
+        if concurrency is not None:
+            set_setting(db, f'batch_concurrency:{batch_id}', str(max(1, min(int(concurrency), 8))))
         queued = 0
         for video_id in ids:
             # Recheck immediately before persisting: a valid preview file may have

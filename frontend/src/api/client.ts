@@ -182,7 +182,8 @@ export const api = {
     previewToken: string,
     format: AudioFormat = 'm4a_alac',
     cleanNames: boolean = true,
-    embedMetadata: boolean = true
+    embedMetadata: boolean = true,
+    concurrency: number = 3
   ) =>
     request<DownloadBatch>('/api/downloads', {
       method: 'POST',
@@ -193,6 +194,7 @@ export const api = {
         format,
         clean_names: cleanNames,
         embed_metadata: embedMetadata,
+        concurrency,
       }),
     }),
 

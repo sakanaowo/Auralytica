@@ -111,6 +111,7 @@ class DownloadRequest(BaseModel):
     format: Literal['m4a_alac', 'm4a_aac', 'mp3', 'raw'] = 'raw'
     clean_names: bool = False
     embed_metadata: bool = False
+    concurrency: int = Field(default=3, ge=1, le=8)
 
 
 class MetadataRunRequest(BaseModel):
@@ -275,15 +276,11 @@ def create_app(database: str | Path | None = None, *, port=8765, max_body_bytes=
     async def filesystem_error(request, exc):
         return JSONResponse({'detail': 'Không thể đọc/ghi file local; kiểm tra quyền và dung lượng.'}, status_code=500)
 
-    @app.get('/')
-    def status():
-        with closing(open_database(database)) as db:
-            return RedirectResponse('/explore' if get_setting(db, 'active_import') else '/import', status_code=303)
-
     @app.get('/api/health')
     def health():
         return {'app': 'auralytica', 'api': 1, 'database_id': database_identity(database)}
 
+    @app.get('/')
     @app.get('/import')
     @app.get('/explore')
     @app.get('/deduplicate')
@@ -518,6 +515,7 @@ def create_app(database: str | Path | None = None, *, port=8765, max_body_bytes=
                                             format_type=payload.format,
                                             clean_names=payload.clean_names,
                                             embed_metadata=payload.embed_metadata,
+                                            concurrency=payload.concurrency,
                                             launcher=app.state.launch_worker)
 
     @app.post('/api/downloads/{batch_id}/stop')

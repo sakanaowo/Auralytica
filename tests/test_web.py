@@ -72,13 +72,13 @@ class WebTests(unittest.TestCase):
         self.assertEqual(empty['channels'], [])
 
     def test_workflow_routes_and_root_choose_active_import(self):
-        self.assertEqual(self.client.get('/', follow_redirects=False).headers.get('location'), '/import')
-        for route in ('import', 'explore', 'deduplicate', 'download'):
+        root_resp = self.client.get('/', follow_redirects=False)
+        self.assertEqual(root_resp.status_code, 200)
+        self.assertIn('text/html', root_resp.headers['content-type'])
+        for route in ('import', 'explore', 'deduplicate', 'download', 'player'):
             response = self.client.get('/' + route)
             self.assertEqual(response.status_code, 200)
             self.assertIn('workflow-nav', response.text)
-        self.upload()
-        self.assertEqual(self.client.get('/', follow_redirects=False).headers.get('location'), '/explore')
 
     def test_workflow_reports_counts_locks_and_dedup_readiness(self):
         response = self.client.get('/api/workflow')
