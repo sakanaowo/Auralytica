@@ -500,6 +500,16 @@ def create_app(database: str | Path | None = None, *, port=8765, max_body_bytes=
         with closing(open_database(database)) as db:
             return downloads.retry_item(db, database, batch_id=batch_id, video_id=video_id, launcher=app.state.launch_worker)
 
+    @app.post('/api/downloads/{batch_id}/skip-failed')
+    def download_skip_failed(batch_id: int):
+        with closing(open_database(database)) as db:
+            return downloads.skip_failed(db, batch_id=batch_id)
+
+    @app.post('/api/downloads/{batch_id}/items/{video_id}/skip')
+    def download_skip_item(batch_id: int, video_id: VideoID):
+        with closing(open_database(database)) as db:
+            return downloads.skip_item(db, batch_id=batch_id, video_id=video_id)
+
     @app.post('/api/downloads')
     def download_start(payload: DownloadRequest):
         with closing(open_database(database)) as db:

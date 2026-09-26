@@ -165,7 +165,17 @@ export const api = {
     request<DownloadBatch>(`/api/downloads/${batchId}/retry-failed`, { method: 'POST' }),
 
   retryDownloadItem: (batchId: number, videoId: string) =>
-    request<DownloadBatch>(`/api/downloads/${batchId}/items/${videoId}/retry`, { method: 'POST' }),
+    request<DownloadBatch>(`/api/downloads/${batchId}/items/${encodeURIComponent(videoId)}/retry`, {
+      method: 'POST',
+    }),
+
+  skipFailedDownloads: (batchId: number) =>
+    request<DownloadBatch>(`/api/downloads/${batchId}/skip-failed`, { method: 'POST' }),
+
+  skipDownloadItem: (batchId: number, videoId: string) =>
+    request<DownloadBatch>(`/api/downloads/${batchId}/items/${encodeURIComponent(videoId)}/skip`, {
+      method: 'POST',
+    }),
 
   startDownload: (
     outputDir: string,

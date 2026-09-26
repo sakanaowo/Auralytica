@@ -213,3 +213,43 @@ class DownloadControlTests(unittest.TestCase):
         self.assertTrue(status['clean_names'])
         self.assertTrue(status['embed_metadata'])
 
+    def test_skip_item_and_skip_failed(self):
+        response = self.start()
+        self.assertEqual(response.status_code, 200, response.text)
+        batch = response.json()['batch_id']
+        with open_database(self.database) as db:
+            db.execute("UPDATE download_items SET status='failed',error_code='unavailable',error_message='Video không khả dụng' WHERE batch_id=? AND video_id='00000000000'", (batch,))
+            db.execute("UPDATE download_items SET status='failed',error_code='unavailable',error_message='Video riêng tư' WHERE batch_id=? AND video_id='00000000001'", (batch,))
+            db.execute("UPDATE download_batches SET status='partial' WHERE id=?", (batch,))
+
+        # 1. Skip single item 00000000000
+        skip_res = self.post(f'/api/downloads/{batch}/items/00000000000/skip')
+        self.assertEqual(skip_res.status_code, 200)
+        with open_database(self.database) as db:
+            item = db.execute("SELECT status,error_code FROM download_items WHERE batch_id=? AND video_id='00000000000'", (batch,)).fetchone()
+            self.assertEqual(item['status'], 'skipped')
+            self.assertIsNone(item['error_code'])
+            # Verify excluded from download_selections
+            selection = db.execute("SELECT keep FROM download_selections WHERE video_id='00000000000'").fetchone()
+            self.assertEqual(selection['keep'], 0)
+            # Batch should still be partial because 00000000001 is failed
+            batch_row = db.execute("SELECT status FROM download_batches WHERE id=?", (batch,)).fetchone()
+            self.assertEqual(batch_row['status'], 'partial')
+
+        # 2. Skip remaining failed items (00000000001)
+        skip_all_res = self.post(f'/api/downloads/{batch}/skip-failed')
+        self.assertEqual(skip_all_res.status_code, 200)
+        with open_database(self.database) as db:
+            item2 = db.execute("SELECT status,error_code FROM download_items WHERE batch_id=? AND video_id='00000000001'", (batch,)).fetchone()
+            self.assertEqual(item2['status'], 'skipped')
+            # Since no more failed/queued items, batch should now be completed!
+            batch_row = db.execute("SELECT status,finished_at FROM download_batches WHERE id=?", (batch,)).fetchone()
+            self.assertEqual(batch_row['status'], 'completed')
+            self.assertIsNotNone(batch_row['finished_at'])
+
+            # Verify preview drops needed count because both items are now keep=0
+            preview = self.client.get('/api/downloads/preview', params={'output_dir': str(self.output)}).json()
+            self.assertEqual(preview['needed'], 0)
+            self.assertEqual(preview['kept'], 0)
+
+

@@ -124,3 +124,71 @@ def retry_item(db, database, batch_id, video_id, launcher=launch_worker):
         launcher(database, batch_id)
     return batch
 
+
+def skip_item(db, batch_id, video_id):
+    """Mark a specific failed item as skipped and exclude it from future downloads."""
+    batch = get_batch(db, batch_id)
+    if batch['status'] == 'running':
+        raise BatchBusyError('Worker đang tải; hãy tạm dừng trước khi bỏ qua bài lỗi.')
+    with transaction(db):
+        row = db.execute(
+            "SELECT status FROM download_items WHERE batch_id=? AND video_id=?",
+            (batch_id, video_id),
+        ).fetchone()
+        if not row:
+            raise ValueError("Không tìm thấy bài hát trong lượt tải.")
+        db.execute(
+            "UPDATE download_items SET status='skipped', error_code=NULL, error_message='Đã bỏ qua bài lỗi do người dùng chọn' "
+            "WHERE batch_id=? AND video_id=?",
+            (batch_id, video_id),
+        )
+        current_rev = int(get_setting(db, 'dedup_selection_revision') or 0)
+        new_rev = current_rev + 1
+        db.execute(
+            "INSERT INTO download_selections(video_id, keep, revision) VALUES(?, 0, ?) "
+            "ON CONFLICT(video_id) DO UPDATE SET keep=0, revision=excluded.revision, updated_at=CURRENT_TIMESTAMP",
+            (video_id, new_rev),
+        )
+        set_setting(db, 'dedup_selection_revision', str(new_rev))
+
+        counts = get_batch(db, batch_id)['counts']
+        if not counts.get('failed') and not counts.get('queued') and not counts.get('running'):
+            db.execute("UPDATE download_batches SET status='completed', finished_at=CURRENT_TIMESTAMP WHERE id=?", (batch_id,))
+    return get_batch(db, batch_id)
+
+
+def skip_failed(db, batch_id):
+    """Mark all failed items in the batch as skipped and exclude them from future downloads."""
+    batch = get_batch(db, batch_id)
+    if batch['status'] == 'running':
+        raise BatchBusyError('Worker đang tải; hãy tạm dừng trước khi bỏ qua các bài lỗi.')
+    with transaction(db):
+        failed_rows = db.execute(
+            "SELECT video_id FROM download_items WHERE batch_id=? AND status='failed'",
+            (batch_id,),
+        ).fetchall()
+        if not failed_rows:
+            return get_batch(db, batch_id)
+
+        failed_ids = [r['video_id'] for r in failed_rows]
+        db.execute(
+            "UPDATE download_items SET status='skipped', error_code=NULL, error_message='Đã bỏ qua bài lỗi do người dùng chọn' "
+            "WHERE batch_id=? AND status='failed'",
+            (batch_id,),
+        )
+        current_rev = int(get_setting(db, 'dedup_selection_revision') or 0)
+        new_rev = current_rev + 1
+        for vid in failed_ids:
+            db.execute(
+                "INSERT INTO download_selections(video_id, keep, revision) VALUES(?, 0, ?) "
+                "ON CONFLICT(video_id) DO UPDATE SET keep=0, revision=excluded.revision, updated_at=CURRENT_TIMESTAMP",
+                (vid, new_rev),
+            )
+        set_setting(db, 'dedup_selection_revision', str(new_rev))
+
+        counts = get_batch(db, batch_id)['counts']
+        if not counts.get('failed') and not counts.get('queued') and not counts.get('running'):
+            db.execute("UPDATE download_batches SET status='completed', finished_at=CURRENT_TIMESTAMP WHERE id=?", (batch_id,))
+    return get_batch(db, batch_id)
+
+

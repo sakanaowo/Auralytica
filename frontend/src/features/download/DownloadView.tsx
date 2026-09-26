@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { RefreshCw, SkipForward } from 'lucide-react';
 import { api } from '../../api/client';
 import { DownloadBatch, DownloadBatchItem, AudioFormat } from '../../api/types';
 
@@ -118,18 +119,15 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
     } catch { }
   }, [outputDir, format]);
 
-  // Fetch preview
-  const previewQuery = useQuery({
-    queryKey: ['downloads', 'preview', outputDir],
-    queryFn: () => api.getDownloadPreview(outputDir),
-    enabled: outputDir.trim().length > 0,
-  });
-
-  // Fetch batches list (poll if batchLocked)
+  // Batches list query (polling based on active status)
   const batchesQuery = useQuery({
     queryKey: ['downloads', 'batches'],
     queryFn: () => api.getDownloads(),
-    refetchInterval: batchLocked ? 1500 : 5000,
+    refetchInterval: (query) => {
+      const bList = query.state.data?.batches || [];
+      const hasActive = bList.some((b) => b.status === 'running' || b.status === 'queued');
+      return batchLocked || hasActive ? 1500 : 5000;
+    },
   });
 
   const batches = batchesQuery.data?.batches || [];
@@ -141,15 +139,38 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
     }
   }, [batches, selectedBatchId]);
 
+  // Determine if there is any active download running
+  const hasActiveBatch = batches.some((b) => b.status === 'running' || b.status === 'queued');
+  const isBatchActive = batchLocked || hasActiveBatch;
+
+  // Fetch preview (automatically kept in sync)
+  const previewQuery = useQuery({
+    queryKey: ['downloads', 'preview', outputDir],
+    queryFn: () => api.getDownloadPreview(outputDir),
+    enabled: outputDir.trim().length > 0,
+    refetchInterval: isBatchActive ? 2500 : 8000,
+  });
+
   // Fetch selected batch detail with status filter
   const batchDetailQuery = useQuery({
     queryKey: ['downloads', 'batch', selectedBatchId, batchPage, statusFilter],
     queryFn: () => api.getDownloadBatch(selectedBatchId!, batchPage, 20, statusFilter),
     enabled: selectedBatchId !== null,
-    refetchInterval: batchLocked ? 1500 : false,
+    refetchInterval: isBatchActive ? 1500 : 5000,
   });
 
   const currentBatch: DownloadBatch | undefined = batchDetailQuery.data;
+
+  // Detect completion transition: when active becomes false, trigger full refresh
+  const prevBatchActive = useRef(isBatchActive);
+  useEffect(() => {
+    if (prevBatchActive.current && !isBatchActive) {
+      queryClient.invalidateQueries({ queryKey: ['downloads'] });
+      queryClient.invalidateQueries({ queryKey: ['workflow'] });
+      onRefreshWorkflow();
+    }
+    prevBatchActive.current = isBatchActive;
+  }, [isBatchActive, queryClient, onRefreshWorkflow]);
 
   // Start download mutation
   const startMutation = useMutation({
@@ -163,6 +184,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
       setBatchPage(1);
       setStatusFilter('all');
       queryClient.invalidateQueries({ queryKey: ['downloads'] });
+      queryClient.invalidateQueries({ queryKey: ['workflow'] });
       onRefreshWorkflow();
     },
     onError: (err: any) => {
@@ -175,6 +197,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
     mutationFn: (id: number) => api.stopDownload(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['downloads'] });
+      queryClient.invalidateQueries({ queryKey: ['workflow'] });
       onRefreshWorkflow();
     },
   });
@@ -184,6 +207,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
     mutationFn: (id: number) => api.resumeDownload(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['downloads'] });
+      queryClient.invalidateQueries({ queryKey: ['workflow'] });
       onRefreshWorkflow();
     },
   });
@@ -193,6 +217,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
     mutationFn: (id: number) => api.retryFailedDownloads(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['downloads'] });
+      queryClient.invalidateQueries({ queryKey: ['workflow'] });
       onRefreshWorkflow();
     },
     onError: (err: any) => {
@@ -209,12 +234,45 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
         setInspectItem(null);
       }
       queryClient.invalidateQueries({ queryKey: ['downloads'] });
+      queryClient.invalidateQueries({ queryKey: ['workflow'] });
       onRefreshWorkflow();
     },
     onError: (err: any) => {
       setErrorMsg(err.message);
     },
   });
+
+  // Skip all failed items
+  const skipFailedMutation = useMutation({
+    mutationFn: (id: number) => api.skipFailedDownloads(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['downloads'] });
+      queryClient.invalidateQueries({ queryKey: ['workflow'] });
+      onRefreshWorkflow();
+    },
+    onError: (err: any) => {
+      setErrorMsg(err.message);
+    },
+  });
+
+  // Skip single item
+  const skipItemMutation = useMutation({
+    mutationFn: ({ batchId, videoId }: { batchId: number; videoId: string }) =>
+      api.skipDownloadItem(batchId, videoId),
+    onSuccess: () => {
+      if (inspectItem) {
+        setInspectItem(null);
+      }
+      queryClient.invalidateQueries({ queryKey: ['downloads'] });
+      queryClient.invalidateQueries({ queryKey: ['workflow'] });
+      onRefreshWorkflow();
+    },
+    onError: (err: any) => {
+      setErrorMsg(err.message);
+    },
+  });
+
+  const isSkipping = skipFailedMutation.isPending || skipItemMutation.isPending;
 
   const preview = previewQuery.data;
   const canStart = (preview?.needed ?? 0) > 0 && !batchLocked && !startMutation.isPending;
@@ -236,11 +294,27 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold tracking-tight text-zinc-100">04 · Download — Tải thư viện nhạc</h1>
-        <p className="text-xs text-zinc-400 mt-1">
-          Tải toàn bộ các bản thu được giữ lại. File audio giữ nguyên codec nguồn không chuyển mã; tự động phát hiện và bỏ qua file đã có.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-zinc-100">04 · Download — Tải thư viện nhạc</h1>
+          <p className="text-xs text-zinc-400 mt-1">
+            Tải toàn bộ các bản thu được giữ lại. File audio giữ nguyên codec nguồn không chuyển mã; tự động phát hiện và bỏ qua file đã có.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            queryClient.invalidateQueries({ queryKey: ['downloads'] });
+            queryClient.invalidateQueries({ queryKey: ['workflow'] });
+            onRefreshWorkflow();
+          }}
+          disabled={batchesQuery.isFetching || batchDetailQuery.isFetching || previewQuery.isFetching}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg glass-input text-zinc-300 hover:text-white transition-all shadow-sm shrink-0 self-start sm:self-auto cursor-pointer disabled:opacity-50"
+          title="Làm mới trạng thái đợt tải và thư viện"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${batchesQuery.isFetching || batchDetailQuery.isFetching || previewQuery.isFetching ? 'animate-spin' : ''}`} />
+          <span>Làm mới</span>
+        </button>
       </div>
 
       {/* Directory & Preview Card */}
@@ -512,14 +586,26 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
                       )}
 
                       {failedCount > 0 && !['running'].includes(currentBatch.status) && (
-                        <button
-                          type="button"
-                          disabled={isRetrying || batchLocked}
-                          onClick={() => retryFailedMutation.mutate(currentBatch.batch_id)}
-                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 border border-rose-500/30 transition-all shadow-sm"
-                        >
-                          {retryFailedMutation.isPending ? 'Đang gửi...' : `Thử lại ${failedCount} bài lỗi`}
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            disabled={isRetrying || isSkipping || batchLocked}
+                            onClick={() => retryFailedMutation.mutate(currentBatch.batch_id)}
+                            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 border border-rose-500/30 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                          >
+                            {retryFailedMutation.isPending ? 'Đang gửi...' : `Thử lại ${failedCount} bài lỗi`}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isRetrying || isSkipping || batchLocked}
+                            onClick={() => skipFailedMutation.mutate(currentBatch.batch_id)}
+                            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-white/10 transition-all shadow-sm flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                            title="Bỏ qua các bài lỗi này và không tải nữa"
+                          >
+                            <SkipForward className="w-3.5 h-3.5" />
+                            <span>{skipFailedMutation.isPending ? 'Đang bỏ qua...' : `Bỏ qua ${failedCount} bài lỗi`}</span>
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -721,17 +807,28 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
                                     )}
                                   </td>
 
-                                  {/* Action: Retry single item */}
+                                  {/* Action: Retry or Skip single item */}
                                   <td className="p-3 text-right">
                                     {item.status === 'failed' && (
-                                      <button
-                                        type="button"
-                                        disabled={isRetrying || ['running'].includes(currentBatch.status)}
-                                        onClick={() => retryItemMutation.mutate({ batchId: currentBatch.batch_id, videoId: item.video_id })}
-                                        className="px-2.5 py-1 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/10 disabled:opacity-40 transition-colors"
-                                      >
-                                        Thử lại
-                                      </button>
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <button
+                                          type="button"
+                                          disabled={isRetrying || isSkipping || ['running'].includes(currentBatch.status)}
+                                          onClick={() => retryItemMutation.mutate({ batchId: currentBatch.batch_id, videoId: item.video_id })}
+                                          className="px-2.5 py-1 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/10 disabled:opacity-40 transition-colors cursor-pointer"
+                                        >
+                                          Thử lại
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={isRetrying || isSkipping || ['running'].includes(currentBatch.status)}
+                                          onClick={() => skipItemMutation.mutate({ batchId: currentBatch.batch_id, videoId: item.video_id })}
+                                          className="px-2.5 py-1 text-xs font-medium rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-white/5 disabled:opacity-40 transition-colors cursor-pointer"
+                                          title="Bỏ qua bài này và không tải nữa"
+                                        >
+                                          Bỏ qua
+                                        </button>
+                                      </div>
                                     )}
                                   </td>
                                 </tr>
@@ -851,14 +948,24 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
                   Đóng
                 </button>
                 {currentBatch && !['running'].includes(currentBatch.status) && (
-                  <button
-                    type="button"
-                    disabled={isRetrying}
-                    onClick={() => retryItemMutation.mutate({ batchId: currentBatch.batch_id, videoId: inspectItem.video_id })}
-                    className="px-3.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-medium transition-all shadow-sm"
-                  >
-                    {retryItemMutation.isPending ? 'Đang gửi...' : 'Thử lại bài này'}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      disabled={isSkipping || isRetrying}
+                      onClick={() => skipItemMutation.mutate({ batchId: currentBatch.batch_id, videoId: inspectItem.video_id })}
+                      className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-all border border-white/10 text-xs cursor-pointer disabled:opacity-50"
+                    >
+                      {skipItemMutation.isPending ? 'Đang bỏ qua...' : 'Bỏ qua bài này'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isRetrying || isSkipping}
+                      onClick={() => retryItemMutation.mutate({ batchId: currentBatch.batch_id, videoId: inspectItem.video_id })}
+                      className="px-3.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-medium transition-all shadow-sm text-xs cursor-pointer disabled:opacity-50"
+                    >
+                      {retryItemMutation.isPending ? 'Đang gửi...' : 'Thử lại bài này'}
+                    </button>
+                  </>
                 )}
               </div>
             </div>
