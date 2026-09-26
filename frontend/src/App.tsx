@@ -111,6 +111,8 @@ export const App: React.FC = () => {
                       navigateStep('explore');
                     }}
                     batchLocked={!!workflow?.batch_locked}
+                    onNavigateExplore={() => navigateStep('explore')}
+                    onRefreshWorkflow={refetchWorkflow}
                   />
                 )}
 

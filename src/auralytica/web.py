@@ -17,7 +17,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers, UploadFile as StarletteUploadFile
 
 from . import download_controls as downloads
-from . import converter, dedup, enrichment, metadata, player
+from . import converter, dedup, enrichment, importer, metadata, player
 from .importer import import_folder
 from .explore import summary as explore_summary
 from .review import list_videos, move_videos
@@ -448,6 +448,21 @@ def create_app(database: str | Path | None = None, *, port=8765, max_body_bytes=
     def move(payload: MoveRequest):
         with closing(open_database(database)) as db:
             return move_videos(db, payload.video_ids, payload.to_group)
+
+    @app.get('/api/imports')
+    def get_imports():
+        with closing(open_database(database)) as db:
+            return importer.get_import_sessions(db)
+
+    @app.post('/api/imports/{import_id}/activate')
+    def activate_import(import_id: int):
+        with closing(open_database(database)) as db:
+            return importer.activate_import_session(db, import_id)
+
+    @app.delete('/api/imports/{import_id}')
+    def delete_import(import_id: int):
+        with closing(open_database(database)) as db:
+            return importer.delete_import_session(db, import_id)
 
     @app.post('/api/imports')
     async def imports(request: Request):

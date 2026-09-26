@@ -102,6 +102,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               return (
                 <button
                   key={s.key}
+                  id={`nav-step-${s.key}`}
                   type="button"
                   onClick={() => onNavigate(s.key)}
                   className={`px-3 py-1 text-xs rounded-lg transition-all select-none font-medium flex items-center gap-1.5 ${

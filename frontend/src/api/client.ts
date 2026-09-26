@@ -18,6 +18,7 @@ import {
   PlayerPlaylist,
   PlayerPlaylistTrack,
   PlayerMetadataUpdatePayload,
+  ImportSessionsResponse,
 } from './types';
 
 export class ApiError extends Error {
@@ -191,7 +192,19 @@ export const api = {
   resumeDownload: (batchId: number) =>
     request<DownloadBatch>(`/api/downloads/${batchId}/resume`, { method: 'POST' }),
 
-  // Import
+  // Import & Sessions
+  getImports: () => request<ImportSessionsResponse>('/api/imports'),
+
+  activateImport: (importId: number) =>
+    request<{ status: string; active_import: number }>(`/api/imports/${importId}/activate`, {
+      method: 'POST',
+    }),
+
+  deleteImport: (importId: number) =>
+    request<{ status: string; deleted_import_id: number }>(`/api/imports/${importId}`, {
+      method: 'DELETE',
+    }),
+
   importUpload: (formData: FormData) =>
     request<{ import_id: number; unique_videos: number; video_events: number }>('/api/imports', {
       method: 'POST',

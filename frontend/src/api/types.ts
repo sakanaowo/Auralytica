@@ -310,3 +310,39 @@ export interface PlayerMetadataUpdatePayload {
   cover_file?: File | null;
 }
 
+export interface ImportSessionStatistics {
+  raw_events?: number;
+  parsed_events?: number;
+  ignored_records?: number;
+  distinct_videos?: number;
+  distinct_days?: number;
+  earliest_time?: string | null;
+  latest_time?: string | null;
+}
+
+export interface ImportSessionCounts {
+  music: number;
+  rest: number;
+  total?: number;
+}
+
+export interface ImportSession {
+  id: number;
+  imported_at?: string;
+  created_at?: string;
+  source_path?: string;
+  source_name?: string;
+  source_hash?: string;
+  statistics: ImportSessionStatistics;
+  counts: ImportSessionCounts;
+  is_active: boolean;
+}
+
+export interface ImportSessionsResponse {
+  items: ImportSession[];
+  sessions?: ImportSession[];
+  active_import: number | null;
+  batch_locked: boolean;
+}
+
+

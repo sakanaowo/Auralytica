@@ -7,9 +7,10 @@ import json
 from pathlib import Path
 import re
 import sqlite3
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from .storage import set_setting, transaction, assert_review_unlocked
+from .storage import get_setting, set_setting, transaction, assert_review_unlocked
 from .classification import classify_import
 
 
@@ -148,3 +149,131 @@ def import_folder(db: sqlite3.Connection, folder: str | Path, *, history: str | 
         set_setting(db, 'active_import', str(import_id))
         classification = classify_import(db, import_id)
     return dict(import_id=import_id, reused=bool(existing), statistics=stats, classification=classification)
+
+
+def get_import_sessions(db: sqlite3.Connection) -> dict[str, Any]:
+    """Retrieve all import sessions with their counts, statistics, and active status."""
+    active_str = get_setting(db, 'active_import')
+    active_id = int(active_str) if active_str else None
+
+    # Check if download batches are currently locked
+    batches = db.execute("SELECT status FROM download_batches").fetchall()
+    batch_locked = any(row['status'] in ('queued', 'running') for row in batches)
+
+    rows = db.execute(
+        "SELECT id, source_hash, source_name, created_at, statistics_json "
+        "FROM imports ORDER BY id DESC"
+    ).fetchall()
+
+    items = []
+    for r in rows:
+        try:
+            stats = json.loads(r['statistics_json'])
+        except Exception:
+            stats = {}
+
+        counts_row = db.execute(
+            "SELECT "
+            "SUM(CASE WHEN COALESCE(v.user_group, v.auto_group) = 'music' THEN 1 ELSE 0 END) AS music_count, "
+            "SUM(CASE WHEN COALESCE(v.user_group, v.auto_group) = 'rest' THEN 1 ELSE 0 END) AS rest_count "
+            "FROM videos v WHERE v.id IN (SELECT video_id FROM watch_events WHERE import_id = ?)",
+            (r['id'],),
+        ).fetchone()
+
+        music_c = counts_row['music_count'] or 0
+        rest_c = counts_row['rest_count'] or 0
+
+        items.append({
+            'id': r['id'],
+            'source_name': r['source_name'],
+            'source_path': r['source_name'],
+            'source_hash': r['source_hash'],
+            'created_at': r['created_at'],
+            'imported_at': r['created_at'],
+            'is_active': (r['id'] == active_id),
+            'statistics': stats,
+            'counts': {
+                'music': music_c,
+                'rest': rest_c,
+                'total': music_c + rest_c,
+            },
+        })
+
+    return {
+        'items': items,
+        'sessions': items,
+        'active_import': active_id,
+        'batch_locked': batch_locked,
+    }
+
+
+def activate_import_session(db: sqlite3.Connection, import_id: int) -> dict[str, Any]:
+    """Switch the current active import session safely."""
+    with transaction(db):
+        assert_review_unlocked(db)
+        row = db.execute("SELECT id FROM imports WHERE id = ?", (import_id,)).fetchone()
+        if not row:
+            raise ValueError(f"Không tìm thấy phiên import #{import_id}.")
+        set_setting(db, 'active_import', str(import_id))
+    return {'status': 'activated', 'active_import': import_id}
+
+
+def delete_import_session(db: sqlite3.Connection, import_id: int) -> dict[str, Any]:
+    """Delete an inactive import session and its associated watch events."""
+    with transaction(db):
+        assert_review_unlocked(db)
+        active_str = get_setting(db, 'active_import')
+        if active_str and int(active_str) == import_id:
+            raise ValueError("Không thể xóa phiên đang hoạt động. Vui lòng kích hoạt phiên khác trước khi xóa.")
+
+        row = db.execute("SELECT id FROM imports WHERE id = ?", (import_id,)).fetchone()
+        if not row:
+            raise ValueError(f"Không tìm thấy phiên import #{import_id}.")
+
+        # 1. Classification previews
+        try:
+            db.execute("DELETE FROM classification_previews WHERE import_id = ?", (import_id,))
+        except sqlite3.OperationalError:
+            pass
+
+        # 2. Dedup runs and children
+        try:
+            db.execute(
+                "DELETE FROM dedup_members WHERE group_id IN ("
+                "SELECT id FROM dedup_groups WHERE run_id IN (SELECT id FROM dedup_runs WHERE import_id = ?))",
+                (import_id,),
+            )
+            db.execute(
+                "DELETE FROM dedup_groups WHERE run_id IN (SELECT id FROM dedup_runs WHERE import_id = ?)",
+                (import_id,),
+            )
+            db.execute("DELETE FROM dedup_runs WHERE import_id = ?", (import_id,))
+        except sqlite3.OperationalError:
+            pass
+
+        # 3. Audit runs and metadata
+        try:
+            db.execute(
+                "DELETE FROM metadata_cache WHERE observation_id IN ("
+                "SELECT id FROM audit_events WHERE run_id IN (SELECT id FROM audit_runs WHERE import_id = ?))",
+                (import_id,),
+            )
+            db.execute(
+                "DELETE FROM metadata_items WHERE run_id IN (SELECT id FROM audit_runs WHERE import_id = ?)",
+                (import_id,),
+            )
+            db.execute(
+                "DELETE FROM audit_events WHERE run_id IN (SELECT id FROM audit_runs WHERE import_id = ?)",
+                (import_id,),
+            )
+            db.execute("DELETE FROM audit_runs WHERE import_id = ?", (import_id,))
+        except sqlite3.OperationalError:
+            pass
+
+        # 4. Delete associated watch events
+        db.execute("DELETE FROM watch_events WHERE import_id = ?", (import_id,))
+        # 5. Delete import record
+        db.execute("DELETE FROM imports WHERE id = ?", (import_id,))
+
+    return {'status': 'deleted', 'deleted_id': import_id}
+
