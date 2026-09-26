@@ -2,6 +2,8 @@ import React from 'react';
 import { WorkflowState } from '../api/types';
 import { PersistentPlayerBar } from '../features/player/PersistentPlayerBar';
 import { QueueDrawer } from '../features/player/QueueDrawer';
+import { ShortcutsModal } from '../features/player/ShortcutsModal';
+import { usePlayerShortcuts } from '../hooks/usePlayerShortcuts';
 import { FolderDown, Headphones } from 'lucide-react';
 
 export type AppMode = 'takeout' | 'player';
@@ -23,6 +25,9 @@ export const AppShell: React.FC<AppShellProps> = ({
   workflow,
   children,
 }) => {
+  // Activate global keyboard shortcuts (Space, Left/Right arrow, Seek, Mute, etc.)
+  usePlayerShortcuts();
+
   const steps: Array<{
     key: 'import' | 'explore' | 'deduplicate' | 'download';
     label: string;
@@ -154,8 +159,11 @@ export const AppShell: React.FC<AppShellProps> = ({
       {/* Persistent Bottom Audio Player Bar */}
       <PersistentPlayerBar />
 
-      {/* Right Slide-over Queue Drawer */}
-      <QueueDrawer />
+      {/* Right Slide-over Queue Drawer (Only in Takeout Studio mode, since PlayerWorkspace has docked right sidebar) */}
+      {appMode !== 'player' && <QueueDrawer />}
+
+      {/* Global Keyboard Shortcuts Modal */}
+      <ShortcutsModal />
     </div>
   );
 };

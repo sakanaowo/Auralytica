@@ -28,6 +28,7 @@ interface PlayerSidebarProps {
   onExportM3U: (id: number) => void;
   favoritesCount?: number;
   totalTracksCount?: number;
+  width?: number;
 }
 
 export const PlayerSidebar: React.FC<PlayerSidebarProps> = ({
@@ -41,11 +42,15 @@ export const PlayerSidebar: React.FC<PlayerSidebarProps> = ({
   onExportM3U,
   favoritesCount = 0,
   totalTracksCount = 0,
+  width,
 }) => {
   const [menuOpenId, setMenuOpenId] = React.useState<number | null>(null);
 
   return (
-    <aside className="w-60 md:w-64 shrink-0 bg-[#09090b]/90 border-r border-white/10 flex flex-col h-full select-none text-zinc-300">
+    <aside
+      style={{ width: width ? `${width}px` : undefined }}
+      className="w-60 md:w-64 shrink-0 bg-[#09090b]/90 border-r border-white/10 flex flex-col h-full select-none text-zinc-300 transition-[width] duration-75 overflow-hidden z-20"
+    >
       {/* Main Navigation */}
       <div className="p-3 space-y-1">
         <span className="px-3 text-[10px] font-mono tracking-wider uppercase text-zinc-500">
