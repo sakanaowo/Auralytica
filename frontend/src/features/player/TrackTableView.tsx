@@ -13,6 +13,7 @@ import {
   Trash2,
   Volume2,
   ListPlus,
+  Clock,
 } from 'lucide-react';
 
 interface TrackTableViewProps {
@@ -55,15 +56,19 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6 select-none">
-      <table className="w-full text-left border-collapse">
+      <table className="w-full text-left border-collapse table-fixed">
         {/* Table Header */}
         <thead className="sticky top-0 z-20 bg-[#09090b]/95 backdrop-blur-md border-b border-white/10 text-[11px] font-mono uppercase tracking-wider text-zinc-400">
           <tr>
-            <th className="w-12 py-3 pl-3 text-center">#</th>
-            <th className="py-3 px-3">Tiêu đề</th>
-            <th className="py-3 px-3 hidden md:table-cell">Album</th>
-            <th className="w-20 py-3 px-3 text-right">Thời lượng</th>
-            <th className="w-20 py-3 pr-3 text-center">Thao tác</th>
+            <th className="w-12 py-3 px-2 text-center font-medium">#</th>
+            <th className="py-3 px-3 font-medium">Tiêu đề</th>
+            <th className="w-1/4 py-3 px-3 hidden md:table-cell font-medium">Album</th>
+            <th className="w-20 py-3 px-3 text-right font-medium">
+              <Clock className="w-4 h-4 ml-auto text-zinc-400" />
+            </th>
+            <th className="w-20 py-3 pr-4 text-right font-medium">
+              <span className="sr-only">Thao tác</span>
+            </th>
           </tr>
         </thead>
 
@@ -84,7 +89,7 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
                 }`}
               >
                 {/* Index / Play Button */}
-                <td className="py-2 pl-3 text-center w-12 relative">
+                <td className="w-12 py-2 px-2 text-center align-middle relative">
                   <div className="flex items-center justify-center">
                     {isCurrent && isPlaying ? (
                       <Volume2 className="w-4 h-4 text-emerald-400 group-hover:hidden" />
@@ -111,7 +116,7 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
                 </td>
 
                 {/* Title & Artist & Artwork */}
-                <td className="py-2 px-3">
+                <td className="py-2 px-3 align-middle">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 shrink-0 rounded-lg overflow-hidden bg-zinc-900 border border-white/10 flex items-center justify-center">
                       {track.has_cover_art ? (
@@ -131,10 +136,14 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
                         className={`truncate text-xs ${
                           isCurrent ? 'text-emerald-400 font-semibold' : 'text-zinc-100'
                         }`}
+                        title={track.title || track.filename}
                       >
                         {track.title || track.filename}
                       </p>
-                      <p className="truncate text-[11px] text-zinc-400">
+                      <p
+                        className="truncate text-[11px] text-zinc-400"
+                        title={track.artist || 'Không rõ nghệ sĩ'}
+                      >
                         {track.artist || 'Không rõ nghệ sĩ'}
                       </p>
                     </div>
@@ -142,32 +151,41 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
                 </td>
 
                 {/* Album */}
-                <td className="py-2 px-3 hidden md:table-cell text-zinc-400 truncate max-w-[200px]">
-                  {track.album || '—'}
+                <td className="py-2 px-3 hidden md:table-cell align-middle">
+                  <p
+                    className="truncate text-xs text-zinc-400"
+                    title={track.album || '—'}
+                  >
+                    {track.album || '—'}
+                  </p>
                 </td>
 
                 {/* Duration */}
-                <td className="py-2 px-3 text-right font-mono text-[11px] text-zinc-400">
+                <td className="w-20 py-2 px-3 text-right font-mono text-[11px] text-zinc-400 align-middle whitespace-nowrap">
                   {formatDuration(track.duration)}
                 </td>
 
                 {/* Actions & Heart */}
-                <td className="py-2 pr-3 text-center relative">
-                  <div className="flex items-center justify-center gap-1">
+                <td className="w-20 py-2 pr-4 text-right align-middle relative">
+                  <div className="flex items-center justify-end gap-1">
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleFavorite(track.path);
                       }}
-                      className="p-1.5 rounded-full hover:bg-white/10 transition-colors"
+                      className={`p-1.5 rounded-full hover:bg-white/10 transition-all ${
+                        track.is_favorite
+                          ? 'opacity-100'
+                          : 'opacity-0 group-hover:opacity-100'
+                      }`}
                       title={track.is_favorite ? 'Bỏ thích' : 'Yêu thích'}
                     >
                       <Heart
                         className={`w-3.5 h-3.5 transition-colors ${
                           track.is_favorite
                             ? 'text-rose-500 fill-rose-500'
-                            : 'text-zinc-500 hover:text-zinc-300'
+                            : 'text-zinc-400 hover:text-white'
                         }`}
                       />
                     </button>
@@ -180,7 +198,9 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
                           setActiveMenuTrackPath(isMenuOpen ? null : track.path);
                           setShowPlaylistSubmenu(false);
                         }}
-                        className="p-1.5 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+                        className={`p-1.5 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-all ${
+                          isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        }`}
                         title="Tùy chọn khác"
                       >
                         <MoreHorizontal className="w-3.5 h-3.5" />
