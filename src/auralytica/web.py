@@ -163,6 +163,8 @@ class DirectVideoItem(BaseModel):
     video_id: str
     url: str | None = None
     title: str | None = None
+    artist: str | None = None
+    album: str | None = None
     channel: str | None = None
     duration: int | None = None
     thumbnail_url: str | None = None
@@ -172,6 +174,7 @@ class DirectDownloadSubmitRequest(BaseModel):
     videos: list[DirectVideoItem]
     output_dir: str
     format: str = "m4a_alac"
+    concurrency: int = 3
 
 
 class RenameItem(BaseModel):
@@ -568,6 +571,7 @@ def create_app(database: str | Path | None = None, *, port=8765, max_body_bytes=
                 videos=videos,
                 output_dir=payload.output_dir,
                 audio_format=payload.format,
+                concurrency=payload.concurrency,
                 launcher=app.state.launch_worker,
                 database_path=database,
             )

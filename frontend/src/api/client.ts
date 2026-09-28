@@ -20,8 +20,8 @@ import {
   PlayerMetadataUpdatePayload,
   PlayerLyrics,
   ImportSessionsResponse,
-  DirectVideoItem,
   DirectDownloadResolveResponse,
+  DirectDownloadSubmitRequest,
   DirectDownloadSubmitResponse,
 } from './types';
 
@@ -384,11 +384,7 @@ export const api = {
       body: JSON.stringify({ urls }),
     }),
 
-  submitDirectDownload: (payload: {
-    videos: DirectVideoItem[];
-    output_dir: string;
-    format: AudioFormat;
-  }) =>
+  submitDirectDownload: (payload: DirectDownloadSubmitRequest) =>
     request<DirectDownloadSubmitResponse>('/api/download/direct', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

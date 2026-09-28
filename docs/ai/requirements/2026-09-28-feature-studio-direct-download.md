@@ -1,59 +1,59 @@
 ---
 phase: requirements
 title: Requirements & Problem Understanding
-description: Clarify the problem space, gather requirements, and define success criteria for Direct YouTube Link Download in Studio
+description: Clarify the problem space, gather requirements, and define success criteria for Quick YouTube Download workspace with inline metadata editing
 ---
 
-# Requirements: Direct YouTube Download in Takeout Studio
+# Requirements: Quick YouTube Download (Tải Nhanh)
 
 ## 1. Problem Statement
-Currently, Auralytica's Takeout Studio strictly follows a 4-step linear pipeline (`01 Import` -> `02 Explore` -> `03 Deduplicate` -> `04 Download`) that requires importing an extracted Google Takeout folder containing `watch-history.json`.
+Previously, Auralytica's Takeout Studio strictly followed a linear pipeline (`01 Import` -> `02 Explore` -> `03 Deduplicate` -> `04 Download`) that required importing an extracted Google Takeout folder containing `watch-history.json`.
 
-When users discover new songs, music videos, or playlists on YouTube that they want to add to their offline high-fidelity library immediately, they cannot do so through the web interface without re-exporting an entire Google Takeout archive. Users need a direct, flexible way within Studio to paste one or multiple YouTube URLs and download high-quality audio directly to their local music library.
+When users discover new songs, music videos, or playlists on YouTube that they want to add to their offline library immediately, they cannot do so through the web interface without re-exporting an entire Google Takeout archive. Furthermore, users require:
+1. An independent, parallel workspace **Tải nhanh (Quick Download)** parallel to Takeout Studio and Music Player (rather than being hidden as step 05 inside Studio).
+2. The ability to **edit output metadata (Title and Artist)** inline immediately after URL analysis before downloading.
+3. Accurate audio format conversion (Lossless ALAC M4A vs MP3 320 kbps vs AAC 256 kbps).
+4. Full reuse of the rich download controls (output directory picker, audio format cards, concurrency slider, batch monitor with pause/resume, retry/skip, status filters).
 
 ## 2. Goals & Non-Goals
 
 ### Goals
-- Add a dedicated 5th step/tab in Takeout Studio: **`05 Direct Download` (Tải theo link)**.
-- Provide a multi-line input (Textarea) accepting single or multiple YouTube links separated by newlines, spaces, or commas.
-- Parse and validate YouTube URLs robustly:
+- **Top-level Mode Switcher**: Add `[⚡ Tải nhanh]` parallel to `[Takeout Studio]` and `[Music Player]`.
+- **Fast URL Input**: Provide a multi-line Textarea accepting single or multiple YouTube links with a one-click clipboard paste button.
+- **Robust URL Resolution**:
   - Standard watch URLs (`https://www.youtube.com/watch?v=...`)
   - Shortened URLs (`https://youtu.be/...`)
   - YouTube Shorts (`https://www.youtube.com/shorts/...`)
   - YouTube Playlists (`https://www.youtube.com/playlist?list=...`) with automatic extraction of constituent video entries.
-  - Sanitization of query strings (stripping tracking parameters like `&si=`, `&feature=`, `&t=`).
-- Allow users to preview and inspect parsed URLs (Title/ID extraction or video counts) before initiating download.
-- Output configuration:
-  - Format selection: **Lossless ALAC M4A** (bit-perfect Opus extraction) vs **MP3 (320 kbps)**.
-  - Output directory selection (defaulting to configured library path `~/Music/Auralytica`).
-- Backend integration:
-  - Backend endpoint `POST /api/download/direct` that registers the videos into the database and launches a dedicated `download_batches` task.
-  - Leverage the multi-threaded download engine with mobile/web client fallbacks, retry logic, error classification, and skip controls.
-  - Seamless auto-indexing: downloaded tracks are immediately registered in `player_track_cache` so they appear in `/player` without requiring a full library rescan.
-- Real-time status & progress:
-  - Monitor batch progress, item status, download speed, and errors directly in the view.
+  - Stripping tracking parameters (`&si=`, `&feature=`, `&t=`).
+  - Concurrent metadata extraction via `yt-dlp` to get real video title, channel, duration, and thumbnail.
+- **Inline Metadata Editor**:
+  - Editable Title and Artist inputs for each resolved video.
+  - One-click `Wand2` button to clean YouTube tags (official music video, 4K, lyrics, etc.).
+  - Dynamic preview of the planned output filename (`📁 Artist - Title.ext`).
+  - Quick remove button and external YouTube link.
+- **Reuse Rich Download Controls**:
+  - Destination directory selector with fallback to `~/Music/Auralytica`.
+  - Audio format selection cards: Lossless ALAC (M4A), MP3 (320 kbps), AAC (256 kbps).
+  - Concurrency slider (1x - 8x parallel downloads).
+  - Live batch progress monitor with real-time poll, item breakdown, and instant button to switch to Music Player.
+  - Pause/Resume, Retry failed items, and Skip failed items controls.
+- **Output Format Fidelity**:
+  - Correctly normalize format aliases (`mp3_320` -> `mp3`, `alac` -> `m4a_alac`) so transcoding is executed properly.
+- **Instant Auto-Indexing**:
+  - Downloaded tracks are immediately indexed in `player_track_cache` so they are immediately available in `/player`.
 
 ### Non-Goals
-- Supporting non-YouTube streaming platforms (e.g. SoundCloud, Bilibili, Spotify) in this phase.
-- Modifying the existing Google Takeout 4-step workflow (Steps 01-04 remain fully intact).
+- Supporting non-YouTube streaming platforms (e.g. SoundCloud, Bilibili) in this phase.
+- Breaking the existing Google Takeout 4-step workflow (Steps 01-04 remain fully intact in Takeout Studio).
 
-## 3. User Stories & Use Cases
-1. **Single Video Download**: As a user, I want to paste a YouTube link (e.g., `https://youtu.be/dQw4w9WgXcQ`), click Download, and get the audio file saved to my local music library with ID3/M4A tags.
-2. **Batch / Multiple Videos Download**: As a user, I want to paste a list of 10 YouTube video links copied from a forum or playlist, review the parsed list, and download all of them concurrently.
-3. **Playlist Download**: As a user, I want to paste a YouTube playlist URL (e.g. `https://www.youtube.com/playlist?list=PL...`), have the system resolve all video IDs in the playlist, and download them into a batch.
-4. **Instant Playback**: As a user, once my direct downloads finish, I want to switch to Music Player and find my new songs ready to play immediately.
-
-## 4. Success Criteria
-- [ ] Takeout Studio navigation displays `05 Direct` (or `05 Tải theo link`) alongside steps 01-04.
-- [ ] Users can access `05 Direct` at any time, even if no Google Takeout archive has been imported yet.
-- [ ] Textarea accepts multiple links with various formats (watch, youtu.be, shorts, playlist) and parses them without error.
-- [ ] Backend extracts metadata, creates a `download_batches` record with status tracking, and runs downloads in parallel.
-- [ ] Direct download items can be retried or skipped if YouTube blocks or returns errors.
-- [ ] Downloaded tracks appear immediately in the Player workspace library.
-- [ ] All unit, integration, and Playwright browser tests pass.
-- [ ] Production frontend build succeeds with zero TypeScript/lint errors.
-
-## 5. Constraints & Assumptions
-- Python `yt-dlp` is used as the extraction and metadata retrieval engine.
-- Network requests to YouTube may be subject to rate limiting or bot blocks; existing multi-client fallback in `downloader.py` must be utilized.
-- Direct downloads do not require matching with a Google Takeout `watch-history.json` entry.
+## 3. Success Criteria
+- [x] Top-level navigation displays `[Takeout Studio]`, `[⚡ Tải nhanh]`, and `[Music Player]`.
+- [x] Users can access `Tải nhanh` at any time without needing a Google Takeout import.
+- [x] Textarea accepts single/multiple links and playlists, resolving real video metadata.
+- [x] Users can edit Title and Artist inline and see the planned filename preview in real time.
+- [x] Audio formats (ALAC M4A, MP3 320k, AAC) are accurately transcoded and tagged with cover art.
+- [x] Output directory, concurrency slider, pause/resume, and retry/skip controls function identically to `DownloadView`.
+- [x] Downloaded tracks appear immediately in Music Player.
+- [x] All unit, integration, and browser tests pass cleanly.
+- [x] Production frontend build succeeds with zero errors.

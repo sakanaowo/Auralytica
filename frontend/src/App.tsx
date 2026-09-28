@@ -6,7 +6,7 @@ import { ImportView } from './features/import/ImportView';
 import { ExploreView } from './features/explore/ExploreView';
 import { DedupView } from './features/dedup/DedupView';
 import { DownloadView } from './features/download/DownloadView';
-import { DirectDownloadView } from './features/download/DirectDownloadView';
+import { QuickDownloadView } from './features/download/QuickDownloadView';
 import { PlayerWorkspace } from './features/player/PlayerWorkspace';
 import { AudioPlayerProvider } from './context/AudioPlayerContext';
 
@@ -18,7 +18,10 @@ export const App: React.FC = () => {
     if (p === 'player') {
       return { mode: 'player', step: 'explore' };
     }
-    if (['import', 'explore', 'deduplicate', 'download', 'direct'].includes(p)) {
+    if (p === 'quick-download' || p === 'quick') {
+      return { mode: 'quick_download', step: 'explore' };
+    }
+    if (['import', 'explore', 'deduplicate', 'download'].includes(p)) {
       return { mode: 'takeout', step: p as Step };
     }
     try {
@@ -28,7 +31,10 @@ export const App: React.FC = () => {
         if (parsed.mode === 'player') {
           return { mode: 'player', step: 'explore' };
         }
-        if (parsed.mode === 'takeout' && ['import', 'explore', 'deduplicate', 'download', 'direct'].includes(parsed.step)) {
+        if (parsed.mode === 'quick_download') {
+          return { mode: 'quick_download', step: 'explore' };
+        }
+        if (parsed.mode === 'takeout' && ['import', 'explore', 'deduplicate', 'download'].includes(parsed.step)) {
           return { mode: 'takeout', step: parsed.step as Step };
         }
       }
@@ -50,7 +56,12 @@ export const App: React.FC = () => {
   useEffect(() => {
     const p = window.location.pathname.replace(/^\//, '').split('/')[0];
     if (!p) {
-      const target = appMode === 'player' ? '/player' : `/${currentStep}`;
+      const target =
+        appMode === 'player'
+          ? '/player'
+          : appMode === 'quick_download'
+          ? '/quick-download'
+          : `/${currentStep}`;
       window.history.replaceState(null, '', target);
     }
   }, []);
@@ -90,6 +101,10 @@ export const App: React.FC = () => {
       if (window.location.pathname !== '/player') {
         window.history.pushState(null, '', '/player');
       }
+    } else if (mode === 'quick_download') {
+      if (window.location.pathname !== '/quick-download') {
+        window.history.pushState(null, '', '/quick-download');
+      }
     } else {
       if (window.location.pathname !== `/${currentStep}`) {
         window.history.pushState(null, '', `/${currentStep}`);
@@ -110,17 +125,22 @@ export const App: React.FC = () => {
       >
         {appMode === 'player' ? (
           <PlayerWorkspace />
+        ) : appMode === 'quick_download' ? (
+          <QuickDownloadView
+            onRefreshWorkflow={refetchWorkflow}
+            onNavigatePlayer={() => handleModeChange('player')}
+          />
         ) : (
           <>
-            {/* Empty State when no history has been imported yet and step is neither import nor direct */}
-            {!hasImport && currentStep !== 'import' && currentStep !== 'direct' ? (
+            {/* Empty State when no history has been imported yet and step is not import */}
+            {!hasImport && currentStep !== 'import' ? (
               <div className="max-w-md mx-auto my-auto py-16 text-center space-y-4">
                 <div className="glass-panel rounded-2xl p-8 space-y-4 border border-white/10 shadow-xl">
                   <h2 className="text-base font-semibold text-zinc-100">
                     Chưa có dữ liệu lịch sử
                   </h2>
                   <p className="text-xs text-zinc-400 leading-relaxed">
-                    Bạn cần nhập folder Google Takeout trước khi có thể duyệt thư viện, đối soát bài trùng hoặc tải audio. Hoặc bạn có thể dùng bước <strong>05 · Direct</strong> để tải nhanh theo link YouTube.
+                    Bạn cần nhập folder Google Takeout trước khi có thể duyệt thư viện, đối soát bài trùng hoặc tải audio. Hoặc bạn có thể dùng chế độ <strong>Tải nhanh</strong> để tải trực tiếp từ link YouTube.
                   </p>
                   <div className="flex items-center justify-center gap-2 pt-2">
                     <button
@@ -132,10 +152,10 @@ export const App: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => navigateStep('direct')}
+                      onClick={() => handleModeChange('quick_download')}
                       className="px-4 py-2 text-xs font-semibold rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition-all border border-white/10"
                     >
-                      Mở bước 05 · Direct
+                      Mở Tải nhanh
                     </button>
                   </div>
                 </div>
@@ -169,13 +189,6 @@ export const App: React.FC = () => {
                   <DownloadView
                     batchLocked={!!workflow?.batch_locked}
                     onRefreshWorkflow={refetchWorkflow}
-                  />
-                )}
-
-                {currentStep === 'direct' && (
-                  <DirectDownloadView
-                    onRefreshWorkflow={refetchWorkflow}
-                    onNavigatePlayer={() => handleModeChange('player')}
                   />
                 )}
               </>

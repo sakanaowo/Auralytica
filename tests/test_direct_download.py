@@ -139,6 +139,31 @@ class DirectDownloadUnitTests(unittest.TestCase):
 
         mock_start.assert_called_once()
 
+    def test_create_direct_batch_mp3_format_normalization_and_custom_metadata(self):
+        """Test that mp3_320 normalizes to mp3 and custom title/artist are preserved."""
+        videos = [
+            {
+                "video_id": "custom_vid01",
+                "title": "Custom Song Title",
+                "artist": "Custom Singer",
+                "album": "Custom Album",
+            }
+        ]
+        with patch("auralytica.downloader.start_batch_worker"):
+            batch_id = downloader.create_direct_batch(
+                self.db,
+                videos=videos,
+                output_dir=str(self.root / "Music"),
+                audio_format="mp3_320",
+                concurrency=4,
+            )
+        batch = downloader.get_batch(self.db, batch_id)
+        self.assertEqual(batch["format"], "mp3")
+        self.assertEqual(batch["concurrency"], 4)
+        vid_row = storage.get_video(self.db, "custom_vid01")
+        self.assertEqual(vid_row["title"], "Custom Song Title")
+        self.assertEqual(vid_row["channel_name"], "Custom Singer")
+
     def test_direct_download_api_endpoints(self):
         """Test API endpoints /api/download/direct/resolve and /api/download/direct."""
         app = web.create_app(str(self.db_path), port=8765)

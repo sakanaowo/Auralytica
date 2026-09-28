@@ -53,15 +53,14 @@ class DirectDownloadBrowserTests(unittest.TestCase):
     def test_direct_download_navigation_and_submission(self):
         page = self.page
 
-        # 1. Clicking Explore step without import shows empty state prompting Direct step
-        page.locator('#nav-step-explore').click()
-        direct_btn = page.locator('button:has-text("Mở bước 05 · Direct")')
-        expect(direct_btn).to_be_visible()
-        direct_btn.click()
+        # 1. Clicking Tải nhanh mode button switches to Quick YouTube Downloader
+        quick_mode_btn = page.locator('#mode-quick-download')
+        expect(quick_mode_btn).to_be_visible()
+        quick_mode_btn.click()
 
-        # Step 05 header should be visible
-        expect(page.locator('text=05 · Direct Download')).to_be_visible()
-        expect(page.locator('text=Tải nhạc trực tiếp từ YouTube')).to_be_visible()
+        # Header should be visible
+        expect(page.locator('text=Quick YouTube Downloader')).to_be_visible()
+        expect(page.locator('text=Tải nhanh trực tiếp từ YouTube')).to_be_visible()
 
         # 2. Check input controls
         urls_input = page.locator('#direct-urls-input')
@@ -82,10 +81,11 @@ class DirectDownloadBrowserTests(unittest.TestCase):
                     "videos": [
                         {
                             "video_id": "dQw4w9WgXcQ",
-                            "title": "Rick Astley - Never Gonna Give You Up",
-                            "channel_name": "Rick Astley",
+                            "title": "Never Gonna Give You Up",
+                            "artist": "Rick Astley",
+                            "channel": "Rick Astley",
                             "duration": 213,
-                            "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
+                            "thumbnail_url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
                         }
                     ],
                     "invalid_urls": []
@@ -95,9 +95,16 @@ class DirectDownloadBrowserTests(unittest.TestCase):
 
         analyze_btn.click()
 
-        # 5. Verify resolved item appears in preview list
-        expect(page.locator('text=Rick Astley - Never Gonna Give You Up')).to_be_visible(timeout=5000)
-        expect(page.locator('text=Rick Astley')).to_be_visible()
+        # 5. Verify resolved item appears in metadata editor list
+        expect(page.locator('text=Danh sách bài hát tìm thấy (1)')).to_be_visible(timeout=5000)
+        title_input = page.locator('input[value="Never Gonna Give You Up"]')
+        expect(title_input).to_be_visible()
+        artist_input = page.locator('input[value="Rick Astley"]')
+        expect(artist_input).to_be_visible()
+
+        # Test editing metadata inline
+        title_input.fill("Never Gonna Give You Up (Remastered)")
+        expect(page.locator('text=Rick Astley - Never Gonna Give You Up (Remastered)')).to_be_visible()
 
         # 6. Verify start download button is enabled with 1 item
         start_btn = page.locator('#start-direct-download-btn')
@@ -126,8 +133,6 @@ class DirectDownloadBrowserTests(unittest.TestCase):
         expect(page.locator('text=Trình phát nhạc')).to_be_visible(timeout=5000)
 
         # 11. Capture evidence screenshot
-        screenshot_dir = Path('artifacts/browser-runs')
-        screenshot_dir.mkdir(parents=True, exist_ok=True)
         screenshot_path = screenshot_dir / 'direct-download-verified.png'
         page.screenshot(path=str(screenshot_path), full_page=True)
         self.assertTrue(screenshot_path.exists())

@@ -358,6 +358,8 @@ export interface DirectVideoItem {
   video_id: string;
   url?: string;
   title?: string;
+  artist?: string;
+  album?: string;
   channel?: string;
   duration?: number;
   thumbnail_url?: string;
@@ -366,6 +368,13 @@ export interface DirectVideoItem {
 export interface DirectDownloadResolveResponse {
   videos: DirectVideoItem[];
   invalid_urls: string[];
+}
+
+export interface DirectDownloadSubmitRequest {
+  videos: DirectVideoItem[];
+  output_dir: string;
+  format?: AudioFormat;
+  concurrency?: number;
 }
 
 export interface DirectDownloadSubmitResponse {
