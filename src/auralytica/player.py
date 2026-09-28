@@ -248,6 +248,35 @@ def scan_library(db: sqlite3.Connection, folder: str | Path) -> list[dict[str, A
     return results
 
 
+def cache_single_track(db, file_path: str | Path):
+    """Index or update a single downloaded/modified track into player_track_cache."""
+    p = Path(file_path).expanduser().resolve()
+    if not p.is_file() or p.suffix.lower() not in AUDIO_EXTENSIONS:
+        return None
+    try:
+        m = _extract_track_metadata(p)
+        now = _now_iso()
+        with transaction(db):
+            db.execute(
+                "INSERT INTO player_track_cache "
+                "(track_path, file_name, title, artist, album, genre, year, duration, file_size, mtime_ns, has_art, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(track_path) DO UPDATE SET "
+                "file_name=excluded.file_name, title=excluded.title, artist=excluded.artist, "
+                "album=excluded.album, genre=excluded.genre, year=excluded.year, "
+                "duration=excluded.duration, file_size=excluded.file_size, mtime_ns=excluded.mtime_ns, "
+                "has_art=excluded.has_art, updated_at=excluded.updated_at",
+                (
+                    m['path'], m['filename'], m['title'], m['artist'], m['album'],
+                    m['genre'], m['year'], m['duration'], m['file_size'], m['mtime_ns'],
+                    m['has_art'], now,
+                ),
+            )
+        return m
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Cover Art Extraction & Physical Tag Writing
 # ---------------------------------------------------------------------------

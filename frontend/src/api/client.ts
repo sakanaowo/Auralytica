@@ -20,6 +20,9 @@ import {
   PlayerMetadataUpdatePayload,
   PlayerLyrics,
   ImportSessionsResponse,
+  DirectVideoItem,
+  DirectDownloadResolveResponse,
+  DirectDownloadSubmitResponse,
 } from './types';
 
 export class ApiError extends Error {
@@ -372,5 +375,24 @@ export const api = {
     }),
 
   getPlayerFavorites: () => request<string[]>('/api/player/favorites'),
+
+  // Direct Download
+  resolveDirectUrls: (urls: string[]) =>
+    request<DirectDownloadResolveResponse>('/api/download/direct/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ urls }),
+    }),
+
+  submitDirectDownload: (payload: {
+    videos: DirectVideoItem[];
+    output_dir: string;
+    format: AudioFormat;
+  }) =>
+    request<DirectDownloadSubmitResponse>('/api/download/direct', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
 };
 

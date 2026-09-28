@@ -7,12 +7,13 @@ import { usePlayerShortcuts } from '../hooks/usePlayerShortcuts';
 import { FolderDown, Headphones } from 'lucide-react';
 
 export type AppMode = 'takeout' | 'player';
+export type StudioStep = 'import' | 'explore' | 'deduplicate' | 'download' | 'direct';
 
 interface AppShellProps {
   appMode: AppMode;
   onModeChange: (mode: AppMode) => void;
-  currentStep: 'import' | 'explore' | 'deduplicate' | 'download';
-  onNavigate: (step: 'import' | 'explore' | 'deduplicate' | 'download') => void;
+  currentStep: StudioStep;
+  onNavigate: (step: StudioStep) => void;
   workflow?: WorkflowState;
   children: React.ReactNode;
 }
@@ -29,7 +30,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   usePlayerShortcuts();
 
   const steps: Array<{
-    key: 'import' | 'explore' | 'deduplicate' | 'download';
+    key: StudioStep;
     label: string;
     num: string;
   }> = [
@@ -37,6 +38,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     { key: 'explore', label: 'Explore', num: '02' },
     { key: 'deduplicate', label: 'Deduplicate', num: '03' },
     { key: 'download', label: 'Download', num: '04' },
+    { key: 'direct', label: 'Direct', num: '05' },
   ];
 
   return (

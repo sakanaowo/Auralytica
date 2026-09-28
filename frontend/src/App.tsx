@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api/client';
-import { AppShell, AppMode } from './components/AppShell';
+import { AppShell, AppMode, StudioStep } from './components/AppShell';
 import { ImportView } from './features/import/ImportView';
 import { ExploreView } from './features/explore/ExploreView';
 import { DedupView } from './features/dedup/DedupView';
 import { DownloadView } from './features/download/DownloadView';
+import { DirectDownloadView } from './features/download/DirectDownloadView';
 import { PlayerWorkspace } from './features/player/PlayerWorkspace';
 import { AudioPlayerProvider } from './context/AudioPlayerContext';
 
-type Step = 'import' | 'explore' | 'deduplicate' | 'download';
+type Step = StudioStep;
 
 export const App: React.FC = () => {
   const getInitialRoute = (): { mode: AppMode; step: Step } => {
@@ -17,7 +18,7 @@ export const App: React.FC = () => {
     if (p === 'player') {
       return { mode: 'player', step: 'explore' };
     }
-    if (['import', 'explore', 'deduplicate', 'download'].includes(p)) {
+    if (['import', 'explore', 'deduplicate', 'download', 'direct'].includes(p)) {
       return { mode: 'takeout', step: p as Step };
     }
     try {
@@ -27,7 +28,7 @@ export const App: React.FC = () => {
         if (parsed.mode === 'player') {
           return { mode: 'player', step: 'explore' };
         }
-        if (parsed.mode === 'takeout' && ['import', 'explore', 'deduplicate', 'download'].includes(parsed.step)) {
+        if (parsed.mode === 'takeout' && ['import', 'explore', 'deduplicate', 'download', 'direct'].includes(parsed.step)) {
           return { mode: 'takeout', step: parsed.step as Step };
         }
       }
@@ -111,23 +112,32 @@ export const App: React.FC = () => {
           <PlayerWorkspace />
         ) : (
           <>
-            {/* Empty State when no history has been imported yet */}
-            {!hasImport && currentStep !== 'import' ? (
+            {/* Empty State when no history has been imported yet and step is neither import nor direct */}
+            {!hasImport && currentStep !== 'import' && currentStep !== 'direct' ? (
               <div className="max-w-md mx-auto my-auto py-16 text-center space-y-4">
                 <div className="glass-panel rounded-2xl p-8 space-y-4 border border-white/10 shadow-xl">
                   <h2 className="text-base font-semibold text-zinc-100">
                     Chưa có dữ liệu lịch sử
                   </h2>
                   <p className="text-xs text-zinc-400 leading-relaxed">
-                    Bạn cần nhập folder Google Takeout trước khi có thể duyệt thư viện, đối soát bài trùng hoặc tải audio.
+                    Bạn cần nhập folder Google Takeout trước khi có thể duyệt thư viện, đối soát bài trùng hoặc tải audio. Hoặc bạn có thể dùng bước <strong>05 · Direct</strong> để tải nhanh theo link YouTube.
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => navigateStep('import')}
-                    className="px-4 py-2 text-xs font-semibold rounded-lg bg-zinc-100 text-zinc-900 hover:bg-white transition-all shadow-md"
-                  >
-                    Mở bước 01 · Import
-                  </button>
+                  <div className="flex items-center justify-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => navigateStep('import')}
+                      className="px-4 py-2 text-xs font-semibold rounded-lg bg-zinc-100 text-zinc-900 hover:bg-white transition-all shadow-md"
+                    >
+                      Mở bước 01 · Import
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigateStep('direct')}
+                      className="px-4 py-2 text-xs font-semibold rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition-all border border-white/10"
+                    >
+                      Mở bước 05 · Direct
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -159,6 +169,13 @@ export const App: React.FC = () => {
                   <DownloadView
                     batchLocked={!!workflow?.batch_locked}
                     onRefreshWorkflow={refetchWorkflow}
+                  />
+                )}
+
+                {currentStep === 'direct' && (
+                  <DirectDownloadView
+                    onRefreshWorkflow={refetchWorkflow}
+                    onNavigatePlayer={() => handleModeChange('player')}
                   />
                 )}
               </>

@@ -354,4 +354,24 @@ export interface ImportSessionsResponse {
   batch_locked: boolean;
 }
 
+export interface DirectVideoItem {
+  video_id: string;
+  url?: string;
+  title?: string;
+  channel?: string;
+  duration?: number;
+  thumbnail_url?: string;
+}
+
+export interface DirectDownloadResolveResponse {
+  videos: DirectVideoItem[];
+  invalid_urls: string[];
+}
+
+export interface DirectDownloadSubmitResponse {
+  batch_id: number;
+  status: string;
+  total_items: number;
+}
+
 

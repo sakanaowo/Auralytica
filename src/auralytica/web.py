@@ -17,7 +17,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers, UploadFile as StarletteUploadFile
 
 from . import download_controls as downloads
-from . import converter, dedup, enrichment, importer, metadata, player
+from . import converter, dedup, downloader, enrichment, importer, metadata, player
 from .importer import import_folder
 from .explore import summary as explore_summary
 from .review import list_videos, move_videos
@@ -153,6 +153,25 @@ class ConverterStartRequest(BaseModel):
     format: Literal['m4a_alac', 'm4a_aac', 'mp3'] = 'm4a_alac'
     remove_source: bool = False
     items: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DirectDownloadResolveRequest(BaseModel):
+    urls: list[str]
+
+
+class DirectVideoItem(BaseModel):
+    video_id: str
+    url: str | None = None
+    title: str | None = None
+    channel: str | None = None
+    duration: int | None = None
+    thumbnail_url: str | None = None
+
+
+class DirectDownloadSubmitRequest(BaseModel):
+    videos: list[DirectVideoItem]
+    output_dir: str
+    format: str = "m4a_alac"
 
 
 class RenameItem(BaseModel):
@@ -535,6 +554,28 @@ def create_app(database: str | Path | None = None, *, port=8765, max_body_bytes=
     def download_resume(batch_id: int):
         with closing(open_database(database)) as db:
             return downloads.start_download(db, database, batch_id=batch_id, launcher=app.state.launch_worker)
+
+    @app.post('/api/download/direct/resolve')
+    def resolve_direct_urls_endpoint(payload: DirectDownloadResolveRequest):
+        return downloader.resolve_direct_urls(payload.urls)
+
+    @app.post('/api/download/direct')
+    def submit_direct_download_endpoint(payload: DirectDownloadSubmitRequest):
+        with closing(open_database(database)) as db:
+            videos = [v.model_dump() for v in payload.videos]
+            batch_id = downloader.create_direct_batch(
+                db,
+                videos=videos,
+                output_dir=payload.output_dir,
+                audio_format=payload.format,
+                launcher=app.state.launch_worker,
+                database_path=database,
+            )
+            return {
+                "batch_id": batch_id,
+                "status": "queued",
+                "total_items": len(videos),
+            }
 
     @app.get('/api/converter/scan')
     def converter_scan(directory: Annotated[str | None, Query(max_length=4096)] = None):

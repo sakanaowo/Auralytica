@@ -268,6 +268,9 @@ def run_batch(db, batch_id, *, adapter=None, concurrency=None):
                     size = final.stat().st_size
                     tdb.execute("UPDATE download_items SET status='completed',file_path=?,file_size=?,downloaded_bytes=?,total_bytes=? WHERE batch_id=? AND video_id=?",
                                 (str(final), size, size, size, batch_id, video_id))
+                    with suppress(Exception):
+                        from .player import cache_single_track
+                        cache_single_track(tdb, str(final))
                 with suppress(OSError):
                     staged.unlink()  # Cleanup cannot invalidate the published file.
                 if final_staged != staged:
@@ -350,3 +353,174 @@ def run_batch(db, batch_id, *, adapter=None, concurrency=None):
         db.execute('UPDATE download_batches SET status=?,finished_at=CASE WHEN ? IN (\'completed\',\'partial\') THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id=?',
                    (status, status, batch_id))
     return get_batch(db, batch_id)
+
+
+# ---------------------------------------------------------------------------
+# Direct YouTube URL Parsing & Batch Creation
+# ---------------------------------------------------------------------------
+
+YOUTUBE_WATCH_REGEX = re.compile(
+    r'(?:https?:\/\/)?(?:www\.|m\.|music\.)?(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})'
+)
+YOUTUBE_PLAYLIST_REGEX = re.compile(
+    r'(?:https?:\/\/)?(?:www\.|m\.|music\.)?youtube\.com\/playlist\?(?:.*&)?list=([A-Za-z0-9_-]+)'
+)
+BARE_VIDEO_ID_REGEX = re.compile(r'^[A-Za-z0-9_-]{11}$')
+
+
+def parse_youtube_url(url: str) -> dict | None:
+    """Parse a single YouTube link and identify if it is a video or playlist."""
+    if not url or not isinstance(url, str):
+        return None
+    url = url.strip()
+    if not url:
+        return None
+
+    # Check playlist first (if /playlist or playlist?list=)
+    if 'playlist?' in url or '/playlist' in url:
+        match = YOUTUBE_PLAYLIST_REGEX.search(url)
+        if match:
+            return {'type': 'playlist', 'id': match.group(1)}
+
+    # Check watch / embed / shorts / youtu.be
+    match = YOUTUBE_WATCH_REGEX.search(url)
+    if match:
+        return {'type': 'video', 'id': match.group(1)}
+
+    # Check bare 11-char ID
+    if BARE_VIDEO_ID_REGEX.match(url):
+        return {'type': 'video', 'id': url}
+
+    return None
+
+
+def resolve_direct_urls(urls: list[str]) -> dict:
+    """Resolve a list of raw URLs or IDs into valid video entries and invalid strings."""
+    videos = []
+    invalid_urls = []
+    seen_ids = set()
+
+    for raw in urls:
+        if not raw or not isinstance(raw, str):
+            continue
+        cleaned = raw.strip()
+        if not cleaned:
+            continue
+
+        parsed = parse_youtube_url(cleaned)
+        if not parsed:
+            invalid_urls.append(cleaned)
+            continue
+
+        if parsed['type'] == 'video':
+            vid = parsed['id']
+            if vid not in seen_ids:
+                seen_ids.add(vid)
+                videos.append({
+                    'video_id': vid,
+                    'url': f'https://www.youtube.com/watch?v={vid}',
+                    'title': f'YouTube Video [{vid}]',
+                    'channel': 'YouTube',
+                    'duration': 0,
+                    'thumbnail_url': f'https://i.ytimg.com/vi/{vid}/hqdefault.jpg',
+                })
+        elif parsed['type'] == 'playlist':
+            playlist_id = parsed['id']
+            playlist_url = f'https://www.youtube.com/playlist?list={playlist_id}'
+            try:
+                import yt_dlp
+                ydl_opts = {
+                    'extract_flat': 'in_playlist',
+                    'skip_download': True,
+                    'quiet': True,
+                    'no_warnings': True,
+                    'socket_timeout': 10,
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(playlist_url, download=False)
+                    entries = info.get('entries') or []
+                    for entry in entries:
+                        if not entry:
+                            continue
+                        vid = entry.get('id')
+                        if vid and vid not in seen_ids:
+                            seen_ids.add(vid)
+                            videos.append({
+                                'video_id': vid,
+                                'url': f'https://www.youtube.com/watch?v={vid}',
+                                'title': entry.get('title') or f'Track [{vid}]',
+                                'channel': entry.get('uploader') or entry.get('channel') or 'YouTube',
+                                'duration': int(entry.get('duration') or 0),
+                                'thumbnail_url': f'https://i.ytimg.com/vi/{vid}/hqdefault.jpg',
+                            })
+            except Exception:
+                invalid_urls.append(cleaned)
+
+    return {'videos': videos, 'invalid_urls': invalid_urls}
+
+
+def start_batch_worker(database, batch_id):
+    """Spawn worker process for batch."""
+    from .download_controls import launch_worker
+    launch_worker(database, batch_id)
+
+
+def create_direct_batch(
+    db,
+    videos: list[dict],
+    output_dir: str,
+    audio_format: str = 'm4a_alac',
+    launcher=None,
+    database_path=None,
+):
+    """Register videos, create a download batch, and trigger background worker."""
+    if not videos:
+        raise ValueError('Danh sách bài hát trống.')
+
+    format_type = 'mp3_320' if audio_format == 'mp3_320' else 'm4a_alac'
+    output_path = str(Path(output_dir).expanduser().resolve())
+
+    with transaction(db):
+        # 1. Insert/update videos table
+        for v in videos:
+            vid = v['video_id']
+            title = v.get('title') or f'YouTube Video [{vid}]'
+            channel = v.get('channel') or 'YouTube'
+            thumb = v.get('thumbnail_url') or f'https://i.ytimg.com/vi/{vid}/hqdefault.jpg'
+            db.execute(
+                "INSERT INTO videos (id, title, channel_name, thumbnail_url, user_group) "
+                "VALUES (?, ?, ?, ?, 'music') "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "title=CASE WHEN videos.title='' OR videos.title LIKE '%[%]' THEN excluded.title ELSE videos.title END, "
+                "channel_name=COALESCE(videos.channel_name, excluded.channel_name), "
+                "thumbnail_url=COALESCE(videos.thumbnail_url, excluded.thumbnail_url), "
+                "user_group='music'",
+                (vid, title, channel, thumb),
+            )
+
+        # 2. Insert batch
+        cursor = db.execute(
+            "INSERT INTO download_batches (output_dir, status) VALUES (?, 'queued')",
+            (output_path,),
+        )
+        batch_id = cursor.lastrowid
+        set_setting(db, f'batch_format:{batch_id}', format_type)
+        set_setting(db, f'batch_clean_names:{batch_id}', '1')
+        set_setting(db, f'batch_embed_metadata:{batch_id}', '1')
+
+        # 3. Insert download items
+        for v in videos:
+            vid = v['video_id']
+            db.execute(
+                "INSERT INTO download_items (batch_id, video_id, status) "
+                "VALUES (?, ?, 'queued')",
+                (batch_id, vid),
+            )
+
+    # 4. Trigger worker
+    if launcher:
+        launcher(database_path or '', batch_id)
+    elif database_path:
+        start_batch_worker(database_path, batch_id)
+
+    return batch_id
