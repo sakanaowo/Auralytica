@@ -322,7 +322,7 @@ export const PlayerWorkspace: React.FC = () => {
             localStorage.setItem('auralytica_player_left_width', '240');
           } catch {}
         }}
-        className="w-1.5 hover:w-2 hover:bg-emerald-500/50 active:bg-emerald-500 cursor-col-resize z-30 transition-all select-none group flex items-center justify-center shrink-0 -mx-0.5"
+        className="w-1.5 hover:w-2 hover:bg-spotify-500/50 active:bg-spotify-500 cursor-col-resize z-30 transition-all select-none group flex items-center justify-center shrink-0 -mx-0.5"
         title="Kéo để chỉnh độ rộng thư viện (Nhấp đúp để đặt lại 240px)"
       >
         <div className="w-0.5 h-6 bg-white/20 group-hover:bg-white/60 rounded-full transition-colors" />
@@ -424,7 +424,7 @@ export const PlayerWorkspace: React.FC = () => {
               localStorage.setItem('auralytica_player_right_width', '320');
             } catch {}
           }}
-          className="w-1.5 hover:w-2 hover:bg-emerald-500/50 active:bg-emerald-500 cursor-col-resize z-30 transition-all select-none group flex items-center justify-center shrink-0 -mx-0.5"
+          className="w-1.5 hover:w-2 hover:bg-spotify-500/50 active:bg-spotify-500 cursor-col-resize z-30 transition-all select-none group flex items-center justify-center shrink-0 -mx-0.5"
           title="Kéo để chỉnh độ rộng thông tin (Nhấp đúp để đặt lại 320px)"
         >
           <div className="w-0.5 h-6 bg-white/20 group-hover:bg-white/60 rounded-full transition-colors" />
@@ -444,8 +444,17 @@ export const PlayerWorkspace: React.FC = () => {
         <MetadataEditModal
           track={editingTrack}
           onClose={() => setEditingTrack(null)}
-          onSaved={() => {
+          onSaved={(updated) => {
             showToast('Đã cập nhật thông tin thẻ bài hát');
+            queryClient.setQueryData(['player-library'], (old: any) => {
+              if (!old || !old.tracks) return old;
+              return {
+                ...old,
+                tracks: old.tracks.map((t: PlayerTrack) =>
+                  t.path === editingTrack.path || t.path === updated.path ? updated : t
+                ),
+              };
+            });
             refetchLibrary();
           }}
         />

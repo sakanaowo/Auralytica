@@ -4,15 +4,16 @@ import { PersistentPlayerBar } from '../features/player/PersistentPlayerBar';
 import { QueueDrawer } from '../features/player/QueueDrawer';
 import { ShortcutsModal } from '../features/player/ShortcutsModal';
 import { usePlayerShortcuts } from '../hooks/usePlayerShortcuts';
-import { FolderDown, Headphones } from 'lucide-react';
+import { FolderDown, Headphones, Zap } from 'lucide-react';
 
-export type AppMode = 'takeout' | 'player';
+export type AppMode = 'takeout' | 'quick_download' | 'player';
+export type StudioStep = 'import' | 'explore' | 'deduplicate' | 'download';
 
 interface AppShellProps {
   appMode: AppMode;
   onModeChange: (mode: AppMode) => void;
-  currentStep: 'import' | 'explore' | 'deduplicate' | 'download';
-  onNavigate: (step: 'import' | 'explore' | 'deduplicate' | 'download') => void;
+  currentStep: StudioStep;
+  onNavigate: (step: StudioStep) => void;
   workflow?: WorkflowState;
   children: React.ReactNode;
 }
@@ -29,7 +30,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   usePlayerShortcuts();
 
   const steps: Array<{
-    key: 'import' | 'explore' | 'deduplicate' | 'download';
+    key: StudioStep;
     label: string;
     num: string;
   }> = [
@@ -70,8 +71,10 @@ export const AppShell: React.FC<AppShellProps> = ({
           </div>
 
           {/* Top-level Mode Switcher */}
+          {/* Top-level Mode Switcher */}
           <div className="flex items-center p-1 rounded-xl bg-zinc-950/80 border border-white/10 shadow-inner">
             <button
+              id="mode-takeout"
               type="button"
               onClick={() => onModeChange('takeout')}
               className={`px-3 py-1 text-xs rounded-lg transition-all font-medium flex items-center gap-1.5 ${
@@ -85,11 +88,26 @@ export const AppShell: React.FC<AppShellProps> = ({
             </button>
 
             <button
+              id="mode-quick-download"
+              type="button"
+              onClick={() => onModeChange('quick_download')}
+              className={`px-3 py-1 text-xs rounded-lg transition-all font-medium flex items-center gap-1.5 ${
+                appMode === 'quick_download'
+                  ? 'bg-zinc-800 text-spotify-400 border border-white/10 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <span>Tải nhanh</span>
+            </button>
+
+            <button
+              id="mode-player"
               type="button"
               onClick={() => onModeChange('player')}
               className={`px-3 py-1 text-xs rounded-lg transition-all font-medium flex items-center gap-1.5 ${
                 appMode === 'player'
-                  ? 'bg-zinc-800 text-emerald-400 border border-white/10 shadow-sm'
+                  ? 'bg-zinc-800 text-spotify-400 border border-white/10 shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
@@ -99,7 +117,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           </div>
         </div>
 
-        {/* Center: Stepper (Only in Takeout Studio) */}
+        {/* Center: Stepper (Takeout Studio) OR Quick Download indicator */}
         {appMode === 'takeout' && (
           <nav className="flex items-center gap-1.5 p-1 rounded-xl bg-zinc-950/60 border border-white/[0.06]">
             {steps.map((s) => {
@@ -124,10 +142,20 @@ export const AppShell: React.FC<AppShellProps> = ({
           </nav>
         )}
 
+        {appMode === 'quick_download' && (
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-950/60 border border-white/[0.06] text-xs">
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span className="font-medium text-zinc-200">Tải nhanh YouTube</span>
+            <span className="text-[10px] font-mono text-zinc-500 uppercase">Quick Mode</span>
+          </div>
+        )}
+
         {/* Right Status */}
         <div className="shrink-0 text-xs text-zinc-400 hidden sm:block">
           {appMode === 'player' ? (
             <span className="text-xs text-zinc-400 font-medium">Trình phát nhạc cục bộ</span>
+          ) : appMode === 'quick_download' ? (
+            <span className="text-xs font-mono text-zinc-400">Direct YouTube Download</span>
           ) : workflow?.batch_locked ? (
             <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
               Đang tải audio...

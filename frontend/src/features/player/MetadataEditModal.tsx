@@ -38,7 +38,7 @@ export const MetadataEditModal: React.FC<MetadataEditModalProps> = ({
       setYear(track.year || '');
       setRenameFile(false);
       setCoverFile(null);
-      setCoverPreview(track.has_cover_art ? api.getPlayerArtUrl(track.path) : null);
+      setCoverPreview(track.has_cover_art ? api.getPlayerArtUrl(track.path, track.mtime_ns) : null);
       setError(null);
       setSuccess(false);
     }
@@ -77,7 +77,7 @@ export const MetadataEditModal: React.FC<MetadataEditModalProps> = ({
         cover_file: coverFile,
       });
 
-      updateTrackInState(updated);
+      updateTrackInState(updated, track.path);
       onSaved(updated);
       setSuccess(true);
       setTimeout(() => {
@@ -224,7 +224,7 @@ export const MetadataEditModal: React.FC<MetadataEditModalProps> = ({
                 type="checkbox"
                 checked={renameFile}
                 onChange={(e) => setRenameFile(e.target.checked)}
-                className="rounded border-zinc-700 bg-zinc-950 text-emerald-500 focus:ring-0"
+                className="rounded border-zinc-700 bg-zinc-950 text-spotify-500 focus:ring-0"
               />
               <span className="text-xs text-zinc-300">
                 Đổi tên file theo định dạng chuẩn:{' '}
@@ -245,7 +245,7 @@ export const MetadataEditModal: React.FC<MetadataEditModalProps> = ({
             <button
               type="submit"
               disabled={isSaving || success}
-              className="px-4 py-1.5 text-xs font-medium rounded-lg bg-emerald-500 text-zinc-950 hover:bg-emerald-400 disabled:opacity-50 transition-colors flex items-center gap-1.5 shadow-sm"
+              className="px-4 py-1.5 text-xs font-medium rounded-lg bg-spotify-500 text-zinc-950 hover:bg-spotify-400 disabled:opacity-50 transition-colors flex items-center gap-1.5 shadow-sm"
             >
               {isSaving ? (
                 <>

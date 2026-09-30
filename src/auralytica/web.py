@@ -17,7 +17,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers, UploadFile as StarletteUploadFile
 
 from . import download_controls as downloads
-from . import converter, dedup, enrichment, importer, metadata, player
+from . import converter, dedup, downloader, enrichment, importer, metadata, player
 from .importer import import_folder
 from .explore import summary as explore_summary
 from .review import list_videos, move_videos
@@ -155,6 +155,28 @@ class ConverterStartRequest(BaseModel):
     items: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class DirectDownloadResolveRequest(BaseModel):
+    urls: list[str]
+
+
+class DirectVideoItem(BaseModel):
+    video_id: str
+    url: str | None = None
+    title: str | None = None
+    artist: str | None = None
+    album: str | None = None
+    channel: str | None = None
+    duration: int | None = None
+    thumbnail_url: str | None = None
+
+
+class DirectDownloadSubmitRequest(BaseModel):
+    videos: list[DirectVideoItem]
+    output_dir: str
+    format: str = "m4a_alac"
+    concurrency: int = 3
+
+
 class RenameItem(BaseModel):
     source_path: str
     new_name: str
@@ -206,6 +228,14 @@ class ImportM3URequest(BaseModel):
 class PlayerScanRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     folder: str | None = None
+
+
+class SaveLyricsRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    path: str
+    plain_lyrics: str | None = None
+    synced_lyrics: str | None = None
+    is_instrumental: bool = False
 
 
 
@@ -528,6 +558,29 @@ def create_app(database: str | Path | None = None, *, port=8765, max_body_bytes=
         with closing(open_database(database)) as db:
             return downloads.start_download(db, database, batch_id=batch_id, launcher=app.state.launch_worker)
 
+    @app.post('/api/download/direct/resolve')
+    def resolve_direct_urls_endpoint(payload: DirectDownloadResolveRequest):
+        return downloader.resolve_direct_urls(payload.urls)
+
+    @app.post('/api/download/direct')
+    def submit_direct_download_endpoint(payload: DirectDownloadSubmitRequest):
+        with closing(open_database(database)) as db:
+            videos = [v.model_dump() for v in payload.videos]
+            batch_id = downloader.create_direct_batch(
+                db,
+                videos=videos,
+                output_dir=payload.output_dir,
+                audio_format=payload.format,
+                concurrency=payload.concurrency,
+                launcher=app.state.launch_worker,
+                database_path=database,
+            )
+            return {
+                "batch_id": batch_id,
+                "status": "queued",
+                "total_items": len(videos),
+            }
+
     @app.get('/api/converter/scan')
     def converter_scan(directory: Annotated[str | None, Query(max_length=4096)] = None):
         target_dir = directory
@@ -600,13 +653,31 @@ def create_app(database: str | Path | None = None, *, port=8765, max_body_bytes=
         return player.stream_audio_file(track_path, range_header=range)
 
     @app.get('/api/player/art')
-    def player_art(path: Annotated[str, Query(min_length=1, max_length=4096)]):
+    def player_art(path: Annotated[str, Query(min_length=1, max_length=4096)],
+                   mtime: Annotated[int | None, Query()] = None):
         track_path = Path(path).expanduser().resolve()
         art = player.extract_cover_art(track_path)
         if not art:
             raise HTTPException(404, 'Không có ảnh bìa nhúng.')
         data, mime = art
         return Response(content=data, media_type=mime, headers={'Cache-Control': 'public, max-age=86400'})
+
+    @app.get('/api/player/lyrics')
+    def player_lyrics(path: Annotated[str, Query(min_length=1, max_length=4096)],
+                      refresh: Annotated[bool, Query()] = False):
+        with closing(open_database(database)) as db:
+            return player.get_lyrics(db, path, force_refresh=refresh)
+
+    @app.post('/api/player/lyrics')
+    def player_save_lyrics(payload: SaveLyricsRequest):
+        with closing(open_database(database)) as db:
+            return player.save_lyrics(
+                db,
+                track_path=payload.path,
+                plain_lyrics=payload.plain_lyrics,
+                synced_lyrics=payload.synced_lyrics,
+                is_instrumental=payload.is_instrumental,
+            )
 
     @app.post('/api/player/metadata')
     async def player_save_metadata(

@@ -311,6 +311,14 @@ export interface PlayerMetadataUpdatePayload {
   cover_file?: File | null;
 }
 
+export interface PlayerLyrics {
+  track_path: string;
+  plain_lyrics: string | null;
+  synced_lyrics: string | null;
+  is_instrumental: boolean;
+  source: 'lrclib' | 'file' | 'embedded' | 'manual' | 'not_found' | 'none';
+}
+
 export interface ImportSessionStatistics {
   raw_events?: number;
   parsed_events?: number;
@@ -344,6 +352,35 @@ export interface ImportSessionsResponse {
   sessions?: ImportSession[];
   active_import: number | null;
   batch_locked: boolean;
+}
+
+export interface DirectVideoItem {
+  video_id: string;
+  url?: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  channel?: string;
+  duration?: number;
+  thumbnail_url?: string;
+}
+
+export interface DirectDownloadResolveResponse {
+  videos: DirectVideoItem[];
+  invalid_urls: string[];
+}
+
+export interface DirectDownloadSubmitRequest {
+  videos: DirectVideoItem[];
+  output_dir: string;
+  format?: AudioFormat;
+  concurrency?: number;
+}
+
+export interface DirectDownloadSubmitResponse {
+  batch_id: number;
+  status: string;
+  total_items: number;
 }
 
 

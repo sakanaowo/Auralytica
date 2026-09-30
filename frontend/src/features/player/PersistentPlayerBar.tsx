@@ -86,7 +86,7 @@ export const PersistentPlayerBar: React.FC<{ onEditTrack?: (trackPath: string) =
             >
               {currentTrack.has_cover_art ? (
                 <img
-                  src={api.getPlayerArtUrl(currentTrack.path)}
+                  src={api.getPlayerArtUrl(currentTrack.path, currentTrack.mtime_ns)}
                   alt={currentTrack.title}
                   className="w-full h-full object-cover transition-transform group-hover:scale-105"
                 />
@@ -149,7 +149,7 @@ export const PersistentPlayerBar: React.FC<{ onEditTrack?: (trackPath: string) =
             disabled={!currentTrack}
             className={`p-1.5 rounded-full transition-colors ${
               isShuffled
-                ? 'text-emerald-400 hover:text-emerald-300'
+                ? 'text-spotify-400 hover:text-spotify-300'
                 : 'text-zinc-400 hover:text-zinc-200 disabled:opacity-30'
             }`}
             title={isShuffled ? 'Tắt phát ngẫu nhiên' : 'Bật phát ngẫu nhiên'}
@@ -201,7 +201,7 @@ export const PersistentPlayerBar: React.FC<{ onEditTrack?: (trackPath: string) =
             disabled={!currentTrack}
             className={`p-1.5 rounded-full transition-colors ${
               repeatMode !== 'off'
-                ? 'text-emerald-400 hover:text-emerald-300'
+                ? 'text-spotify-400 hover:text-spotify-300'
                 : 'text-zinc-400 hover:text-zinc-200 disabled:opacity-30'
             }`}
             title={
@@ -228,7 +228,7 @@ export const PersistentPlayerBar: React.FC<{ onEditTrack?: (trackPath: string) =
             {/* Custom Background Bar */}
             <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden">
               <div
-                className="h-full bg-zinc-300 group-hover:bg-emerald-400 transition-colors"
+                className="h-full bg-zinc-300 group-hover:bg-spotify-400 transition-colors"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
@@ -274,7 +274,7 @@ export const PersistentPlayerBar: React.FC<{ onEditTrack?: (trackPath: string) =
           <div className="w-20 md:w-24 relative flex items-center group h-3">
             <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden">
               <div
-                className="h-full bg-zinc-300 group-hover:bg-emerald-400 transition-colors"
+                className="h-full bg-zinc-300 group-hover:bg-spotify-400 transition-colors"
                 style={{ width: `${(isMuted ? 0 : volume) * 100}%` }}
               />
             </div>
@@ -296,7 +296,7 @@ export const PersistentPlayerBar: React.FC<{ onEditTrack?: (trackPath: string) =
           onClick={() => toggleRightPanel('now-playing')}
           className={`relative p-2 rounded-lg transition-colors ${
             rightPanelTab === 'now-playing'
-              ? 'text-emerald-400 bg-white/10 shadow-sm'
+              ? 'text-spotify-400 bg-white/10 shadow-sm'
               : 'text-zinc-400 hover:text-white hover:bg-white/10'
           }`}
           title="Xem thông tin bài đang phát (I)"
@@ -310,14 +310,14 @@ export const PersistentPlayerBar: React.FC<{ onEditTrack?: (trackPath: string) =
           onClick={() => toggleRightPanel('queue')}
           className={`relative p-2 rounded-lg transition-colors ${
             rightPanelTab === 'queue'
-              ? 'text-emerald-400 bg-white/10 shadow-sm'
+              ? 'text-spotify-400 bg-white/10 shadow-sm'
               : 'text-zinc-400 hover:text-white hover:bg-white/10'
           }`}
           title="Mở danh sách hàng đợi (Q)"
         >
           <ListMusic className="w-4 h-4" />
           {queue.length > 0 && (
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400" />
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-spotify-400" />
           )}
         </button>
 

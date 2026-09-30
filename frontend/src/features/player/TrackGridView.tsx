@@ -63,7 +63,7 @@ export const TrackGridView: React.FC<TrackGridViewProps> = ({
               <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-zinc-900 border border-white/10 shadow-md">
                 {track.has_cover_art ? (
                   <img
-                    src={api.getPlayerArtUrl(track.path)}
+                    src={api.getPlayerArtUrl(track.path, track.mtime_ns)}
                     alt={track.title}
                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                     loading="lazy"
@@ -231,7 +231,7 @@ export const TrackGridView: React.FC<TrackGridViewProps> = ({
 
                 {/* Now Playing indicator on Card */}
                 {isCurrent && isPlaying && (
-                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-emerald-500/90 text-zinc-950 font-mono text-[10px] font-bold flex items-center gap-1 shadow-md">
+                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-spotify-500/90 text-zinc-950 font-mono text-[10px] font-bold flex items-center gap-1 shadow-md">
                     <Volume2 className="w-3 h-3" />
                     <span>Đang phát</span>
                   </div>
@@ -242,7 +242,7 @@ export const TrackGridView: React.FC<TrackGridViewProps> = ({
               <div className="pt-2.5 space-y-0.5">
                 <p
                   className={`text-xs font-semibold truncate ${
-                    isCurrent ? 'text-emerald-400' : 'text-zinc-100 group-hover:text-white'
+                    isCurrent ? 'text-spotify-400' : 'text-zinc-100 group-hover:text-white'
                   }`}
                   title={track.title || track.filename}
                 >

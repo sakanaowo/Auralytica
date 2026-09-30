@@ -62,7 +62,7 @@ export const ShortcutsModal: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-white/10">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-white/[0.06] border border-white/10 text-emerald-400">
+            <div className="p-2 rounded-xl bg-white/[0.06] border border-white/10 text-spotify-400">
               <Keyboard className="w-5 h-5" />
             </div>
             <div>
