@@ -204,46 +204,46 @@ export const PlayerRightSidebar: React.FC<PlayerRightSidebarProps> = ({
   const renderSpecsCard = () => {
     if (!currentTrack) return null;
     return (
-      <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-3.5 space-y-3 animate-in fade-in duration-150">
-        <span className="text-[10px] font-mono tracking-wider uppercase text-zinc-500 block">
+      <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-4 space-y-3 animate-in fade-in duration-150">
+        <span className="text-xs font-mono tracking-wider uppercase text-zinc-500 block">
           Thông số tệp âm thanh
         </span>
 
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-            <Clock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+            <Clock className="w-4 h-4 text-spotify-400 shrink-0" />
             <div className="min-w-0">
-              <span className="text-[10px] text-zinc-500 block">Thời lượng</span>
+              <span className="text-xs text-zinc-500 block">Thời lượng</span>
               <span className="font-mono text-zinc-200">
                 {formatDuration(currentTrack.duration)}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-            <HardDrive className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+            <HardDrive className="w-4 h-4 text-blue-400 shrink-0" />
             <div className="min-w-0">
-              <span className="text-[10px] text-zinc-500 block">Dung lượng</span>
+              <span className="text-xs text-zinc-500 block">Dung lượng</span>
               <span className="font-mono text-zinc-200">
                 {formatFileSize(currentTrack.file_size)}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-            <FileAudio className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+            <FileAudio className="w-4 h-4 text-amber-400 shrink-0" />
             <div className="min-w-0">
-              <span className="text-[10px] text-zinc-500 block">Định dạng</span>
+              <span className="text-xs text-zinc-500 block">Định dạng</span>
               <span className="font-mono uppercase text-zinc-200">
                 {currentTrack.filename.split('.').pop() || 'AUDIO'}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-            <Calendar className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+            <Calendar className="w-4 h-4 text-purple-400 shrink-0" />
             <div className="min-w-0">
-              <span className="text-[10px] text-zinc-500 block">Năm / Thể loại</span>
+              <span className="text-xs text-zinc-500 block">Năm / Thể loại</span>
               <span className="text-zinc-200 truncate block">
                 {currentTrack.year || currentTrack.genre || 'Chưa đặt'}
               </span>
@@ -261,11 +261,11 @@ export const PlayerRightSidebar: React.FC<PlayerRightSidebarProps> = ({
             <button
               type="button"
               onClick={handleCopyPath}
-              className="text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-spotify-400 hover:underline flex items-center gap-1 cursor-pointer"
             >
               {copiedPath ? (
                 <>
-                  <Check className="w-3 h-3 text-emerald-400" />
+                  <Check className="w-3 h-3 text-spotify-400" />
                   <span>Đã chép</span>
                 </>
               ) : (
@@ -298,9 +298,9 @@ export const PlayerRightSidebar: React.FC<PlayerRightSidebarProps> = ({
           <button
             type="button"
             onClick={() => setRightPanelTab('now-playing')}
-            className={`px-2.5 py-1 text-xs rounded-md font-medium flex items-center gap-1.5 transition-all ${
+            className={`px-3 py-1 text-sm rounded-md font-medium flex items-center gap-2 transition-all ${
               rightPanelTab === 'now-playing'
-                ? 'bg-zinc-800 text-emerald-400 shadow-sm'
+                ? 'bg-zinc-800 text-spotify-400 shadow-sm'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
@@ -311,16 +311,16 @@ export const PlayerRightSidebar: React.FC<PlayerRightSidebarProps> = ({
           <button
             type="button"
             onClick={() => setRightPanelTab('queue')}
-            className={`px-2.5 py-1 text-xs rounded-md font-medium flex items-center gap-1.5 transition-all ${
+            className={`px-3 py-1 text-sm rounded-md font-medium flex items-center gap-2 transition-all ${
               rightPanelTab === 'queue'
-                ? 'bg-zinc-800 text-emerald-400 shadow-sm'
+                ? 'bg-zinc-800 text-spotify-400 shadow-sm'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
             <ListMusic className="w-3.5 h-3.5" />
             <span>Hàng đợi</span>
             {queue.length > 0 && (
-              <span className="text-[10px] font-mono px-1 rounded-full bg-emerald-500/20 text-emerald-300">
+              <span className="text-[10px] font-mono px-1 rounded-full bg-spotify-500/20 text-spotify-300">
                 {queue.length}
               </span>
             )}
@@ -403,8 +403,8 @@ export const PlayerRightSidebar: React.FC<PlayerRightSidebarProps> = ({
 
                   {/* Playing floating badge */}
                   {isPlaying && (
-                    <div className="absolute top-3 left-3 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center gap-1.5 text-[10px] font-medium text-emerald-400 shadow-md">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <div className="absolute top-3 left-3 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center gap-1.5 text-[10px] font-medium text-spotify-400 shadow-md">
+                      <span className="w-1.5 h-1.5 rounded-full bg-spotify-400 animate-pulse" />
                       <span>Đang phát</span>
                     </div>
                   )}
@@ -433,7 +433,7 @@ export const PlayerRightSidebar: React.FC<PlayerRightSidebarProps> = ({
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <h2
-                        className="text-base font-bold text-zinc-100 hover:text-emerald-400 transition-colors cursor-pointer break-words leading-snug"
+                        className="text-base font-bold text-zinc-100 hover:text-spotify-400 transition-colors cursor-pointer break-words leading-snug"
                         onClick={() => onEditTrack?.(currentTrack)}
                         title="Nhấn để sửa thông tin bài hát"
                       >
@@ -486,9 +486,9 @@ export const PlayerRightSidebar: React.FC<PlayerRightSidebarProps> = ({
                   <button
                     type="button"
                     onClick={() => setNowPlayingSubTab('lyrics')}
-                    className={`px-2.5 py-1 rounded-md font-medium flex items-center gap-1.5 transition-all ${
+                    className={`px-3 py-1 rounded-md font-medium flex items-center gap-2 transition-all ${
                       nowPlayingSubTab === 'lyrics'
-                        ? 'bg-zinc-800 text-emerald-400 shadow-sm'
+                        ? 'bg-zinc-800 text-spotify-400 shadow-sm'
                         : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
@@ -504,9 +504,9 @@ export const PlayerRightSidebar: React.FC<PlayerRightSidebarProps> = ({
                   <button
                     type="button"
                     onClick={() => setNowPlayingSubTab('specs')}
-                    className={`px-2.5 py-1 rounded-md font-medium flex items-center gap-1.5 transition-all ${
+                    className={`px-3 py-1 rounded-md font-medium flex items-center gap-2 transition-all ${
                       nowPlayingSubTab === 'specs'
-                        ? 'bg-zinc-800 text-emerald-400 shadow-sm'
+                        ? 'bg-zinc-800 text-spotify-400 shadow-sm'
                         : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
@@ -536,19 +536,19 @@ export const PlayerRightSidebar: React.FC<PlayerRightSidebarProps> = ({
               {/* Dynamic Content Panel */}
               {isLoadingLyrics ? (
                 <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-500">
-                  <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
+                  <Loader2 className="w-6 h-6 animate-spin text-spotify-400" />
                   <span className="text-xs">Đang tìm kiếm lời bài hát...</span>
                 </div>
               ) : nowPlayingSubTab === 'lyrics' ? (
                 lyrics?.is_instrumental ? (
                   /* Instrumental state */
                   <div className="space-y-3">
-                    <div className="rounded-2xl bg-emerald-500/10 border border-emerald-500/20 p-4 flex items-center gap-3 shadow-sm">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0 text-emerald-400">
+                    <div className="rounded-2xl bg-spotify-500/10 border border-spotify-500/20 p-4 flex items-center gap-3 shadow-sm">
+                      <div className="w-10 h-10 rounded-xl bg-spotify-500/20 flex items-center justify-center shrink-0 text-spotify-400">
                         <Headphones className="w-5 h-5" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold text-emerald-300">
+                        <p className="text-xs font-semibold text-spotify-300">
                           Bản nhạc không lời (Instrumental)
                         </p>
                         <p className="text-[11px] text-zinc-400 mt-0.5">
@@ -562,7 +562,7 @@ export const PlayerRightSidebar: React.FC<PlayerRightSidebarProps> = ({
                   /* Synced Karaoke Lyrics */
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-[10px] text-zinc-500 px-1">
-                      <span className="flex items-center gap-1 text-emerald-400/90 font-medium">
+                      <span className="flex items-center gap-1 text-spotify-400/90 font-medium">
                         <Sparkles className="w-3 h-3" />
                         <span>Đồng bộ theo thời gian</span>
                       </span>
@@ -584,7 +584,7 @@ export const PlayerRightSidebar: React.FC<PlayerRightSidebarProps> = ({
                             onClick={() => seek(line.time)}
                             className={`p-2.5 rounded-xl cursor-pointer transition-all duration-200 select-text ${
                               isActive
-                                ? 'bg-emerald-500/15 border border-emerald-500/30 text-white font-semibold text-sm shadow-md scale-[1.01]'
+                                ? 'bg-spotify-500/15 border border-spotify-500/30 text-white font-semibold text-sm shadow-md scale-[1.01]'
                                 : isPast
                                 ? 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] text-xs'
                                 : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] text-xs'
@@ -674,7 +674,7 @@ export const PlayerRightSidebar: React.FC<PlayerRightSidebarProps> = ({
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-emerald-400 truncate">
+                    <p className="text-xs font-semibold text-spotify-400 truncate">
                       {currentTrack.title || currentTrack.filename}
                     </p>
                     <p className="text-[10px] text-zinc-400 truncate">
@@ -682,7 +682,7 @@ export const PlayerRightSidebar: React.FC<PlayerRightSidebarProps> = ({
                     </p>
                   </div>
                   {isPlaying ? (
-                    <Volume2 className="w-3.5 h-3.5 text-emerald-400 animate-pulse shrink-0" />
+                    <Volume2 className="w-3.5 h-3.5 text-spotify-400 animate-pulse shrink-0" />
                   ) : (
                     <span className="text-[10px] text-zinc-500 font-mono">
                       {formatDuration(currentTrack.duration)}
@@ -737,7 +737,7 @@ export const PlayerRightSidebar: React.FC<PlayerRightSidebarProps> = ({
                         className="min-w-0 flex-1 cursor-pointer"
                         onClick={() => playTrack(track)}
                       >
-                        <p className="text-xs font-medium text-zinc-200 group-hover:text-emerald-400 transition-colors truncate">
+                        <p className="text-xs font-medium text-zinc-200 group-hover:text-spotify-400 transition-colors truncate">
                           {track.title || track.filename}
                         </p>
                         <p className="text-[10px] text-zinc-400 truncate">

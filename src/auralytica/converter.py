@@ -203,15 +203,7 @@ def convert_audio_file(
     else:
         cmd.extend(['-vn', '-map', '0:a?'])
 
-    if format_type == 'm4a_alac':
-        cmd.extend(['-c:a', 'alac'])
-        if has_cover:
-            cmd.extend(['-c:v', 'copy', '-disposition:v:0', 'attached_pic'])
-    elif format_type == 'm4a_aac':
-        cmd.extend(['-c:a', 'aac', '-b:a', '256k'])
-        if has_cover:
-            cmd.extend(['-c:v', 'copy', '-disposition:v:0', 'attached_pic'])
-    elif format_type == 'mp3':
+    if format_type in ('mp3', 'mp3_320'):
         cmd.extend(['-c:a', 'libmp3lame', '-b:a', '320k'])
         if has_cover:
             cmd.extend([
@@ -219,8 +211,12 @@ def convert_audio_file(
                 '-metadata:s:v', 'title=Album cover',
                 '-metadata:s:v', 'comment=Cover (front)',
             ])
+    elif format_type in ('m4a_aac', 'aac'):
+        cmd.extend(['-c:a', 'aac', '-b:a', '256k'])
+        if has_cover:
+            cmd.extend(['-c:v', 'copy', '-disposition:v:0', 'attached_pic'])
     else:
-        # Default to alac
+        # Default to alac (m4a_alac, alac)
         cmd.extend(['-c:a', 'alac'])
         if has_cover:
             cmd.extend(['-c:v', 'copy', '-disposition:v:0', 'attached_pic'])

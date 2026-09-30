@@ -223,7 +223,7 @@ export const ImportView: React.FC<ImportViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-zinc-100 flex items-center gap-2">
-            <Database className="w-5 h-5 text-emerald-400" />
+            <Database className="w-5 h-5 text-spotify-400" />
             01 · Nhập & Quản lý phiên Takeout
           </h1>
           <p className="text-xs text-zinc-400 mt-1">
@@ -283,19 +283,19 @@ export const ImportView: React.FC<ImportViewProps> = ({
       )}
 
       {successMessage && (
-        <div className="flex items-center gap-2 p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-emerald-300 text-xs">
-          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+        <div className="flex items-center gap-2 p-3.5 rounded-xl bg-spotify-950/40 border border-spotify-800/40 text-spotify-300 text-xs">
+          <CheckCircle2 className="w-4 h-4 shrink-0 text-spotify-400" />
           <span>{successMessage}</span>
         </div>
       )}
 
       {/* ACTIVE SESSION CARD */}
       {activeSession && (
-        <div className="relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-emerald-950/15 p-6 space-y-5 shadow-lg shadow-emerald-950/20">
+        <div className="relative overflow-hidden rounded-2xl border border-spotify-500/30 bg-spotify-950/15 p-6 space-y-5 shadow-lg shadow-spotify-950/20">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-spotify-500/20 text-spotify-400 border border-spotify-500/40">
+                <span className="w-2 h-2 rounded-full bg-spotify-400 animate-pulse" />
                 Đang hoạt động
               </span>
               <span className="text-xs font-mono text-zinc-400">Phiên #{activeSession.id}</span>
@@ -329,11 +329,11 @@ export const ImportView: React.FC<ImportViewProps> = ({
             </div>
 
             <div className="rounded-xl bg-zinc-900/40 border border-white/5 p-3">
-              <div className="text-xs text-emerald-400/90 flex items-center gap-1.5">
-                <Music2 className="w-3.5 h-3.5 text-emerald-400" />
+              <div className="text-xs text-spotify-400/90 flex items-center gap-1.5">
+                <Music2 className="w-3.5 h-3.5 text-spotify-400" />
                 Video Nhạc
               </div>
-              <div className="text-lg font-bold text-emerald-400 mt-1">
+              <div className="text-lg font-bold text-spotify-400 mt-1">
                 {activeSession.counts.music.toLocaleString()}
               </div>
             </div>
@@ -358,7 +358,7 @@ export const ImportView: React.FC<ImportViewProps> = ({
           </div>
 
           {/* Call to action for active session */}
-          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-emerald-500/20">
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-spotify-500/20">
             <span className="text-xs text-zinc-400">
               Tiến trình phân loại và deduplication của phiên này luôn được lưu tự động.
             </span>
@@ -366,7 +366,7 @@ export const ImportView: React.FC<ImportViewProps> = ({
               <button
                 type="button"
                 onClick={onNavigateExplore}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-md shadow-emerald-950/20 transition-all cursor-pointer"
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-spotify-500 hover:bg-spotify-400 text-zinc-950 shadow-md shadow-spotify-950/20 transition-all cursor-pointer"
               >
                 Tiếp tục xem dữ liệu
                 <ArrowRight className="w-4 h-4" />
@@ -415,7 +415,7 @@ export const ImportView: React.FC<ImportViewProps> = ({
                       video
                     </span>
                     <span className="text-zinc-600">·</span>
-                    <span className="text-emerald-400/90">
+                    <span className="text-spotify-400/90">
                       <strong>{session.counts.music.toLocaleString()}</strong> nhạc
                     </span>
                     <span className="text-zinc-600">·</span>
@@ -438,10 +438,10 @@ export const ImportView: React.FC<ImportViewProps> = ({
                     className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
                       isLockActive
                         ? 'border-white/5 text-zinc-600 bg-zinc-900/50 cursor-not-allowed'
-                        : 'border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 hover:border-emerald-500 bg-emerald-950/20'
+                        : 'border-spotify-500/40 text-spotify-300 hover:bg-spotify-500/10 hover:border-spotify-500 bg-spotify-950/20'
                     }`}
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-spotify-400" />
                     Kích hoạt phiên này
                   </button>
 
@@ -473,7 +473,7 @@ export const ImportView: React.FC<ImportViewProps> = ({
           {sessions.length > 0 && (
             <div className="flex items-center justify-between border-t border-white/5 pt-4">
               <h2 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                <Plus className="w-4 h-4 text-emerald-400" />
+                <Plus className="w-4 h-4 text-spotify-400" />
                 Nạp phiên Takeout mới
               </h2>
               <span className="text-xs text-zinc-500">
@@ -491,7 +491,7 @@ export const ImportView: React.FC<ImportViewProps> = ({
             onDrop={handleDrop}
             className={`glass-panel rounded-2xl border-2 border-dashed p-10 text-center transition-all ${
               isDragging
-                ? 'border-emerald-400 bg-emerald-950/20'
+                ? 'border-spotify-400 bg-spotify-950/20'
                 : 'border-white/10 hover:border-white/20 bg-zinc-900/40'
             } ${isLockActive ? 'opacity-40 pointer-events-none' : ''}`}
           >

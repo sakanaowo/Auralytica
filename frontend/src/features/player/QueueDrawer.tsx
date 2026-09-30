@@ -86,7 +86,7 @@ export const QueueDrawer: React.FC = () => {
                   )}
                   {isPlaying && (
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                      <Volume2 className="w-4 h-4 text-emerald-400 animate-pulse" />
+                      <Volume2 className="w-4 h-4 text-spotify-400 animate-pulse" />
                     </div>
                   )}
                 </div>

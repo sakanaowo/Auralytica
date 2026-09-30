@@ -55,10 +55,10 @@ export const PlayerHeader: React.FC<PlayerHeaderProps> = ({
           type="button"
           onClick={onRescan}
           disabled={isScanning}
-          className="px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white text-xs font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50"
+          className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
           title="Quét lại thư viện nhạc"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin text-emerald-400' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin text-spotify-400' : ''}`} />
           <span className="hidden sm:inline">{isScanning ? 'Đang quét...' : 'Quét lại'}</span>
         </button>
       </div>
@@ -144,7 +144,7 @@ export const PlayerHeader: React.FC<PlayerHeaderProps> = ({
         <button
           type="button"
           onClick={() => setIsShortcutsOpen(true)}
-          className="p-1.5 rounded-lg bg-zinc-900 border border-white/10 text-zinc-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-all flex items-center gap-1.5 text-xs"
+          className="p-1.5 rounded-lg bg-zinc-900 border border-white/10 text-zinc-400 hover:text-spotify-400 hover:border-spotify-500/30 transition-all flex items-center gap-1.5 text-xs"
           title="Xem danh sách phím tắt (?)"
         >
           <Keyboard className="w-3.5 h-3.5" />

@@ -1,21 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api/client';
-import { AppShell, AppMode } from './components/AppShell';
+import { AppShell, AppMode, StudioStep } from './components/AppShell';
 import { ImportView } from './features/import/ImportView';
 import { ExploreView } from './features/explore/ExploreView';
 import { DedupView } from './features/dedup/DedupView';
 import { DownloadView } from './features/download/DownloadView';
+import { QuickDownloadView } from './features/download/QuickDownloadView';
 import { PlayerWorkspace } from './features/player/PlayerWorkspace';
 import { AudioPlayerProvider } from './context/AudioPlayerContext';
 
-type Step = 'import' | 'explore' | 'deduplicate' | 'download';
+type Step = StudioStep;
 
 export const App: React.FC = () => {
   const getInitialRoute = (): { mode: AppMode; step: Step } => {
     const p = window.location.pathname.replace(/^\//, '').split('/')[0];
     if (p === 'player') {
       return { mode: 'player', step: 'explore' };
+    }
+    if (p === 'quick-download' || p === 'quick') {
+      return { mode: 'quick_download', step: 'explore' };
     }
     if (['import', 'explore', 'deduplicate', 'download'].includes(p)) {
       return { mode: 'takeout', step: p as Step };
@@ -26,6 +30,9 @@ export const App: React.FC = () => {
         const parsed = JSON.parse(saved);
         if (parsed.mode === 'player') {
           return { mode: 'player', step: 'explore' };
+        }
+        if (parsed.mode === 'quick_download') {
+          return { mode: 'quick_download', step: 'explore' };
         }
         if (parsed.mode === 'takeout' && ['import', 'explore', 'deduplicate', 'download'].includes(parsed.step)) {
           return { mode: 'takeout', step: parsed.step as Step };
@@ -49,7 +56,12 @@ export const App: React.FC = () => {
   useEffect(() => {
     const p = window.location.pathname.replace(/^\//, '').split('/')[0];
     if (!p) {
-      const target = appMode === 'player' ? '/player' : `/${currentStep}`;
+      const target =
+        appMode === 'player'
+          ? '/player'
+          : appMode === 'quick_download'
+          ? '/quick-download'
+          : `/${currentStep}`;
       window.history.replaceState(null, '', target);
     }
   }, []);
@@ -89,6 +101,10 @@ export const App: React.FC = () => {
       if (window.location.pathname !== '/player') {
         window.history.pushState(null, '', '/player');
       }
+    } else if (mode === 'quick_download') {
+      if (window.location.pathname !== '/quick-download') {
+        window.history.pushState(null, '', '/quick-download');
+      }
     } else {
       if (window.location.pathname !== `/${currentStep}`) {
         window.history.pushState(null, '', `/${currentStep}`);
@@ -109,9 +125,14 @@ export const App: React.FC = () => {
       >
         {appMode === 'player' ? (
           <PlayerWorkspace />
+        ) : appMode === 'quick_download' ? (
+          <QuickDownloadView
+            onRefreshWorkflow={refetchWorkflow}
+            onNavigatePlayer={() => handleModeChange('player')}
+          />
         ) : (
           <>
-            {/* Empty State when no history has been imported yet */}
+            {/* Empty State when no history has been imported yet and step is not import */}
             {!hasImport && currentStep !== 'import' ? (
               <div className="max-w-md mx-auto my-auto py-16 text-center space-y-4">
                 <div className="glass-panel rounded-2xl p-8 space-y-4 border border-white/10 shadow-xl">
@@ -119,15 +140,24 @@ export const App: React.FC = () => {
                     Chưa có dữ liệu lịch sử
                   </h2>
                   <p className="text-xs text-zinc-400 leading-relaxed">
-                    Bạn cần nhập folder Google Takeout trước khi có thể duyệt thư viện, đối soát bài trùng hoặc tải audio.
+                    Bạn cần nhập folder Google Takeout trước khi có thể duyệt thư viện, đối soát bài trùng hoặc tải audio. Hoặc bạn có thể dùng chế độ <strong>Tải nhanh</strong> để tải trực tiếp từ link YouTube.
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => navigateStep('import')}
-                    className="px-4 py-2 text-xs font-semibold rounded-lg bg-zinc-100 text-zinc-900 hover:bg-white transition-all shadow-md"
-                  >
-                    Mở bước 01 · Import
-                  </button>
+                  <div className="flex items-center justify-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => navigateStep('import')}
+                      className="px-4 py-2 text-xs font-semibold rounded-lg bg-zinc-100 text-zinc-900 hover:bg-white transition-all shadow-md"
+                    >
+                      Mở bước 01 · Import
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleModeChange('quick_download')}
+                      className="px-4 py-2 text-xs font-semibold rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition-all border border-white/10"
+                    >
+                      Mở Tải nhanh
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
