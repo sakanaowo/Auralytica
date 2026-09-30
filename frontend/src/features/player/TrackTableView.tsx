@@ -58,7 +58,7 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
     <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6 select-none">
       <table className="w-full text-left border-collapse table-fixed">
         {/* Table Header */}
-        <thead className="sticky top-0 z-20 bg-[#09090b]/95 backdrop-blur-md border-b border-white/10 text-[11px] font-mono uppercase tracking-wider text-zinc-400">
+        <thead className="sticky top-0 z-20 bg-[#09090b]/95 backdrop-blur-md border-b border-white/15 text-xs font-mono uppercase tracking-wider text-zinc-400">
           <tr>
             <th className="w-12 py-3 px-2 text-center font-medium">#</th>
             <th className="py-3 px-3 font-medium">Tiêu đề</th>
@@ -73,7 +73,7 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
         </thead>
 
         {/* Table Body */}
-        <tbody className="divide-y divide-white/[0.04] text-xs">
+        <tbody className="divide-y divide-white/[0.10] text-sm">
           {tracks.map((track, idx) => {
             const isCurrent = currentTrack?.path === track.path;
             const isMenuOpen = activeMenuTrackPath === track.path;
@@ -85,16 +85,16 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
                 className={`group transition-colors cursor-pointer ${
                   isCurrent
                     ? 'bg-white/[0.08] text-white font-medium'
-                    : 'hover:bg-white/[0.04] text-zinc-300'
+                    : 'hover:bg-white/[0.05] text-zinc-300'
                 }`}
               >
                 {/* Index / Play Button */}
-                <td className="w-12 py-2 px-2 text-center align-middle relative">
+                <td className="w-14 py-3 px-3 text-center align-middle relative">
                   <div className="flex items-center justify-center">
                     {isCurrent && isPlaying ? (
-                      <Volume2 className="w-4 h-4 text-emerald-400 group-hover:hidden" />
+                      <Volume2 className="w-4 h-4 text-spotify-400 group-hover:hidden" />
                     ) : (
-                      <span className="font-mono text-[11px] text-zinc-500 group-hover:hidden">
+                      <span className="font-mono text-xs text-zinc-500 group-hover:hidden">
                         {idx + 1}
                       </span>
                     )}
@@ -104,21 +104,21 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
                         e.stopPropagation();
                         handleRowClick(track);
                       }}
-                      className="hidden group-hover:flex items-center justify-center w-6 h-6 rounded-full bg-white text-zinc-950 hover:scale-105 transition-transform"
+                      className="hidden group-hover:flex items-center justify-center w-8 h-8 rounded-full bg-white text-zinc-950 hover:scale-105 transition-transform"
                     >
                       {isCurrent && isPlaying ? (
-                        <Pause className="w-3 h-3 fill-current" />
+                        <Pause className="w-4 h-4 fill-current" />
                       ) : (
-                        <Play className="w-3 h-3 fill-current ml-0.5" />
+                        <Play className="w-4 h-4 fill-current ml-0.5" />
                       )}
                     </button>
                   </div>
                 </td>
 
                 {/* Title & Artist & Artwork */}
-                <td className="py-2 px-3 align-middle">
+                <td className="py-3 px-3 align-middle">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 shrink-0 rounded-lg overflow-hidden bg-zinc-900 border border-white/10 flex items-center justify-center">
+                    <div className="w-12 h-12 shrink-0 rounded-xl overflow-hidden bg-zinc-900 border border-white/10 flex items-center justify-center">
                       {track.has_cover_art ? (
                         <img
                           src={api.getPlayerArtUrl(track.path, track.mtime_ns)}
@@ -127,21 +127,21 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
                           loading="lazy"
                         />
                       ) : (
-                        <Music className="w-4 h-4 text-zinc-600" />
+                        <Music className="w-5 h-5 text-zinc-600" />
                       )}
                     </div>
 
                     <div className="min-w-0 flex-1">
                       <p
-                        className={`truncate text-xs ${
-                          isCurrent ? 'text-emerald-400 font-semibold' : 'text-zinc-100'
+                        className={`truncate text-sm ${
+                          isCurrent ? 'text-spotify-400 font-semibold' : 'text-zinc-100'
                         }`}
                         title={track.title || track.filename}
                       >
                         {track.title || track.filename}
                       </p>
                       <p
-                        className="truncate text-[11px] text-zinc-400"
+                        className="truncate text-xs text-zinc-400 mt-0.5"
                         title={track.artist || 'Không rõ nghệ sĩ'}
                       >
                         {track.artist || 'Không rõ nghệ sĩ'}
@@ -151,9 +151,9 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
                 </td>
 
                 {/* Album */}
-                <td className="py-2 px-3 hidden md:table-cell align-middle">
+                <td className="py-3 px-3 hidden md:table-cell align-middle">
                   <p
-                    className="truncate text-xs text-zinc-400"
+                    className="truncate text-sm text-zinc-400"
                     title={track.album || '—'}
                   >
                     {track.album || '—'}
@@ -161,7 +161,7 @@ export const TrackTableView: React.FC<TrackTableViewProps> = ({
                 </td>
 
                 {/* Duration */}
-                <td className="w-20 py-2 px-3 text-right font-mono text-[11px] text-zinc-400 align-middle whitespace-nowrap">
+                <td className="w-24 py-3 px-3 text-right font-mono text-sm text-zinc-400 align-middle whitespace-nowrap">
                   {formatDuration(track.duration)}
                 </td>
 

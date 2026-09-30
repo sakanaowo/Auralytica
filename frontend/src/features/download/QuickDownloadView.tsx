@@ -391,15 +391,15 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
       )}
 
       {successMsg && (
-        <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center justify-between">
+        <div className="p-4 rounded-xl bg-spotify-500/10 border border-spotify-500/20 text-spotify-300 text-xs flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-spotify-400 shrink-0" />
             <span>{successMsg}</span>
           </div>
           <button
             type="button"
             onClick={() => setSuccessMsg(null)}
-            className="p-1 hover:bg-emerald-500/20 rounded-md transition-colors"
+            className="p-1 hover:bg-spotify-500/20 rounded-md transition-colors"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -488,7 +488,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
             <div>
               <div className="flex items-center gap-2">
-                <Music className="w-4 h-4 text-emerald-400" />
+                <Music className="w-4 h-4 text-spotify-400" />
                 <h2 className="text-sm font-semibold text-zinc-100">
                   Danh sách bài hát tìm thấy ({resolvedVideos.length})
                 </h2>
@@ -505,7 +505,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
                 className="px-3 py-1.5 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer"
                 title="Tự động bóc tách 'Nghệ sĩ - Bài hát' và xóa bỏ các tag thừa như [Official Video], (Audio), [MV]"
               >
-                <Wand2 className="w-3.5 h-3.5 text-emerald-400" />
+                <Wand2 className="w-3.5 h-3.5 text-spotify-400" />
                 <span>Dọn sạch tiêu đề tự động</span>
               </button>
               <button
@@ -575,7 +575,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
                         value={video.title || ''}
                         onChange={(e) => handleUpdateItem(video.video_id, { title: e.target.value })}
                         placeholder="Tiêu đề bài hát"
-                        className="w-full px-3 py-1.5 text-xs rounded-lg bg-zinc-950/80 border border-white/10 text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                        className="w-full px-3 py-1.5 text-xs rounded-lg bg-zinc-950/80 border border-white/10 text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-spotify-500 focus:border-spotify-500 transition-all"
                       />
                     </div>
                     <div>
@@ -587,14 +587,14 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
                         value={video.artist || ''}
                         onChange={(e) => handleUpdateItem(video.video_id, { artist: e.target.value })}
                         placeholder="Nghệ sĩ"
-                        className="w-full px-3 py-1.5 text-xs rounded-lg bg-zinc-950/80 border border-white/10 text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                        className="w-full px-3 py-1.5 text-xs rounded-lg bg-zinc-950/80 border border-white/10 text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-spotify-500 focus:border-spotify-500 transition-all"
                       />
                     </div>
 
                     {/* Planned file name badge */}
                     <div className="sm:col-span-2 text-[11px] text-zinc-400 font-mono truncate flex items-center gap-1.5">
                       <span className="text-zinc-500">Tên file xuất:</span>
-                      <span className="text-emerald-400/90 truncate">{plannedFilename}</span>
+                      <span className="text-spotify-400/90 truncate">{plannedFilename}</span>
                     </div>
                   </div>
 
@@ -629,7 +629,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
       <div className="glass-panel p-6 rounded-2xl border border-white/10 space-y-5 shadow-xl">
         <div className="flex items-center justify-between border-b border-white/5 pb-3">
           <div className="flex items-center gap-2">
-            <Sliders className="w-4 h-4 text-emerald-400" />
+            <Sliders className="w-4 h-4 text-spotify-400" />
             <h2 className="text-sm font-semibold text-zinc-100">
               Cài đặt tải & Định dạng âm thanh
             </h2>
@@ -650,7 +650,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
             value={outputDir}
             onChange={(e) => setOutputDir(e.target.value)}
             placeholder="~/Music/Auralytica"
-            className="w-full px-3.5 py-2 text-xs rounded-lg glass-input text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="w-full px-3.5 py-2 text-xs rounded-lg glass-input text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-spotify-500"
           />
         </div>
 
@@ -687,7 +687,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
                   onClick={() => setSelectedFormat(fmt.id as AudioFormat)}
                   className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
                     isSelected
-                      ? 'bg-emerald-500/15 text-white border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.15)] ring-1 ring-emerald-400/30'
+                      ? 'bg-spotify-500/15 text-white border-spotify-400/50 shadow-[0_0_15px_rgba(16,185,129,0.15)] ring-1 ring-spotify-400/30'
                       : 'bg-zinc-950/40 text-zinc-300 border-white/5 hover:border-white/20 hover:bg-zinc-900/40'
                   }`}
                 >
@@ -696,7 +696,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
                     <span
                       className={`text-[10px] px-2 py-0.5 rounded font-medium ${
                         isSelected
-                          ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-400/30'
+                          ? 'bg-spotify-500/25 text-spotify-200 border border-spotify-400/30'
                           : 'bg-white/5 text-zinc-400 border border-white/5'
                       }`}
                     >
@@ -718,7 +718,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
             <div className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
               Tốc độ tải song song (Concurrency)
             </div>
-            <span className="text-xs font-mono font-bold text-emerald-400">
+            <span className="text-xs font-mono font-bold text-spotify-400">
               {concurrency} luồng đồng thời
             </span>
           </div>
@@ -730,7 +730,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
               step={1}
               value={concurrency}
               onChange={(e) => setConcurrency(parseInt(e.target.value, 10))}
-              className="flex-1 accent-emerald-500 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+              className="flex-1 accent-spotify-500 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
             />
             <div className="flex items-center gap-1">
               {[1, 2, 3, 4, 6, 8].map((val) => (
@@ -740,7 +740,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
                   onClick={() => setConcurrency(val)}
                   className={`px-2 py-0.5 text-[10px] font-mono rounded transition-colors ${
                     concurrency === val
-                      ? 'bg-emerald-500 text-zinc-950 font-bold'
+                      ? 'bg-spotify-500 text-zinc-950 font-bold'
                       : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
                   }`}
                 >
@@ -758,7 +758,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
             type="button"
             disabled={resolvedVideos.length === 0 || submitMutation.isPending}
             onClick={handleStartDownload}
-            className="w-full md:w-auto px-6 py-2.5 text-xs font-semibold rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-zinc-950 font-medium flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-emerald-500/20 cursor-pointer"
+            className="w-full md:w-auto px-6 py-2.5 text-xs font-semibold rounded-xl bg-spotify-500 hover:bg-spotify-400 disabled:opacity-40 text-zinc-950 font-medium flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-spotify-500/20 cursor-pointer"
           >
             {submitMutation.isPending ? (
               <>
@@ -788,7 +788,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
                 <span
                   className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
                     batchData.status === 'completed'
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      ? 'bg-spotify-500/20 text-spotify-300 border border-spotify-500/30'
                       : batchData.status === 'running'
                       ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
                       : batchData.status === 'paused'
@@ -830,7 +830,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
                   type="button"
                   onClick={() => resumeMutation.mutate(batchData.batch_id)}
                   disabled={resumeMutation.isPending}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-spotify-500 hover:bg-spotify-400 text-zinc-950 flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
                   <span>Tiếp tục tải</span>
@@ -866,7 +866,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
                   onClick={onNavigatePlayer}
                   className={`px-4 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-md cursor-pointer ${
                     batchData.status === 'completed'
-                      ? 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-medium'
+                      ? 'bg-spotify-500 hover:bg-spotify-400 text-zinc-950 font-medium'
                       : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-white/10'
                   }`}
                 >
@@ -882,9 +882,9 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
             <div
               className={`h-full transition-all duration-300 ${
                 batchData.status === 'completed'
-                  ? 'bg-emerald-400'
+                  ? 'bg-spotify-400'
                   : failedCount > 0
-                  ? 'bg-gradient-to-r from-emerald-400 to-amber-400'
+                  ? 'bg-gradient-to-r from-spotify-400 to-amber-400'
                   : 'bg-sky-400'
               }`}
               style={{
@@ -951,7 +951,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
                       <span
                         className={`text-[10px] font-mono px-2 py-0.5 rounded border uppercase ${
                           item.status === 'completed'
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                            ? 'bg-spotify-500/10 text-spotify-400 border-spotify-500/20'
                             : item.status === 'running'
                             ? 'bg-sky-500/10 text-sky-400 border-sky-500/20'
                             : item.status === 'failed'

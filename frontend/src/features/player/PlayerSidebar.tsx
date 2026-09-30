@@ -68,7 +68,7 @@ export const PlayerSidebar: React.FC<PlayerSidebarProps> = ({
           }`}
         >
           <div className="flex items-center gap-2.5">
-            <Music className="w-4 h-4 text-emerald-400" />
+            <Music className="w-4 h-4 text-spotify-400" />
             <span>Tất cả bài hát</span>
           </div>
           {totalTracksCount > 0 && (
@@ -132,7 +132,7 @@ export const PlayerSidebar: React.FC<PlayerSidebarProps> = ({
               <button
                 type="button"
                 onClick={onOpenCreatePlaylist}
-                className="text-emerald-400 hover:underline text-xs"
+                className="text-spotify-400 hover:underline text-xs"
               >
                 + Tạo playlist đầu tiên
               </button>

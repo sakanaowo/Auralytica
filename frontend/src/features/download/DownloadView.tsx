@@ -608,7 +608,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
                           </>
                         ) : isCompleted ? (
                           <>
-                            <div className="text-xs font-medium text-emerald-400 mb-0.5 flex items-center gap-1">
+                            <div className="text-xs font-medium text-spotify-400 mb-0.5 flex items-center gap-1">
                               <span>✓</span>
                               <span>Toàn bộ đĩa nhạc đã hoàn tất!</span>
                             </div>

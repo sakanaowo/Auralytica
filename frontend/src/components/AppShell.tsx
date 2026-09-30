@@ -93,7 +93,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               onClick={() => onModeChange('quick_download')}
               className={`px-3 py-1 text-xs rounded-lg transition-all font-medium flex items-center gap-1.5 ${
                 appMode === 'quick_download'
-                  ? 'bg-zinc-800 text-emerald-400 border border-white/10 shadow-sm'
+                  ? 'bg-zinc-800 text-spotify-400 border border-white/10 shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
@@ -107,7 +107,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               onClick={() => onModeChange('player')}
               className={`px-3 py-1 text-xs rounded-lg transition-all font-medium flex items-center gap-1.5 ${
                 appMode === 'player'
-                  ? 'bg-zinc-800 text-emerald-400 border border-white/10 shadow-sm'
+                  ? 'bg-zinc-800 text-spotify-400 border border-white/10 shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
