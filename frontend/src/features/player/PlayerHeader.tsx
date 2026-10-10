@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Folder,
   RefreshCw,
@@ -39,6 +39,20 @@ export const PlayerHeader: React.FC<PlayerHeaderProps> = ({
   totalFilteredTracks,
 }) => {
   const { setIsShortcutsOpen } = useAudioPlayer();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Global keyboard shortcut: Ctrl+F focuses search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <header className="shrink-0 p-4 border-b border-white/10 bg-[#09090b]/80 backdrop-blur-md flex flex-wrap items-center justify-between gap-4 select-none">
@@ -69,6 +83,7 @@ export const PlayerHeader: React.FC<PlayerHeaderProps> = ({
         <div className="relative">
           <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
+            ref={searchInputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
