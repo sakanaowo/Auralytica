@@ -23,13 +23,14 @@ def get_batch(db, batch_id):
     embed = get_setting(db, f'batch_embed_metadata:{batch_id}') != '0'
     concurrency_val = get_setting(db, f'batch_concurrency:{batch_id}')
     concurrency = int(concurrency_val) if concurrency_val and concurrency_val.isdigit() else 3
-    return dict(batch_id=row['id'], output_dir=row['output_dir'], status=row['status'],
+    return dict(batch_id=row['id'], kind=row['kind'], output_dir=row['output_dir'], status=row['status'],
                 format=fmt, clean_names=clean, embed_metadata=embed, concurrency=concurrency,
                 total=sum(counts.values()), queued=counts.get('queued', 0),
                 skipped=counts.get('skipped', 0), counts=counts)
 
 
-def _active(db):
+def active_batch(db):
+    """The single queued/running batch; the worker lock allows only one at a time."""
     return db.execute("SELECT id FROM download_batches WHERE status IN ('queued','running') ORDER BY id LIMIT 1").fetchone()
 
 
@@ -211,9 +212,12 @@ def eligible_snapshot(db, output_dir):
 def create_batch(db, output_dir, *, expected_token=None, format_type='raw', clean_names=False, embed_metadata=False, concurrency=None):
     """Snapshot all kept music, independent of any UI filters or pagination."""
     with transaction(db):
-        active = _active(db)
+        active = active_batch(db)
         if active:
-            return dict(get_batch(db, active[0]), reused=True)
+            batch = get_batch(db, active[0])
+            if batch['kind'] != 'takeout':
+                raise BatchBusyError(f"Lượt Tải nhanh #{batch['batch_id']} đang chờ/chạy; đợi xong hoặc tạm dừng trước.")
+            return dict(batch, reused=True)
         snapshot = eligible_snapshot(db, output_dir)
         if expected_token is not None and expected_token != snapshot['token']:
             raise RevisionConflict('Danh sách hoặc file đã đổi; kiểm tra preview rồi tải lại.')
@@ -277,7 +281,7 @@ def pause_batch(db, batch_id):
 def resume_batch(db, batch_id):
     with _worker_lock(db), transaction(db):
         batch = get_batch(db, batch_id)
-        active = _active(db)
+        active = active_batch(db)
         if active:
             if active[0] == batch_id and batch['status'] == 'queued':
                 return batch
@@ -315,7 +319,7 @@ def worker_session(db, batch_id):
             batch = get_batch(db, batch_id)
             if batch['status'] != 'queued':
                 raise ValueError('Batch phải ở trạng thái queued trước khi chạy worker.')
-            active = _active(db)
+            active = active_batch(db)
             if active is None or active[0] != batch_id:
                 raise BatchBusyError('Batch khác đang giữ quyền tải.')
             db.execute("UPDATE download_batches SET status='running' WHERE id=?", (batch_id,))

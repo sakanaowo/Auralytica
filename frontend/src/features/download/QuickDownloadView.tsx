@@ -22,9 +22,11 @@ import {
   Music,
 } from 'lucide-react';
 import { api } from '../../api/client';
-import { DirectVideoItem, AudioFormat, DownloadBatchItem } from '../../api/types';
+import { DirectVideoItem, DirectUnavailableItem, AudioFormat, DownloadBatchItem } from '../../api/types';
 
 interface QuickDownloadViewProps {
+  /** A batch (this view's or a Takeout one) holds the single download worker. */
+  downloadBusy?: boolean;
   onRefreshWorkflow?: () => void;
   onNavigatePlayer?: () => void;
 }
@@ -39,11 +41,13 @@ const ERROR_CODE_LABELS: Record<string, { label: string; color: string; desc: st
   network_error: { label: 'Lỗi mạng', color: 'text-sky-300 bg-sky-500/10 border-sky-500/20', desc: 'Timeout kết nối.' },
   filesystem: { label: 'Lỗi ổ đĩa', color: 'text-rose-400 bg-rose-500/10 border-rose-500/20', desc: 'Đầy dung lượng hoặc thiếu quyền ghi.' },
   download_error: { label: 'Lỗi tải', color: 'text-zinc-300 bg-zinc-500/10 border-zinc-500/20', desc: 'Lỗi không xác định.' },
+  transcode_error: { label: 'Lỗi chuyển định dạng', color: 'text-rose-400 bg-rose-500/10 border-rose-500/20', desc: 'ffmpeg không chuyển được file; kiểm tra ffmpeg đã cài.' },
 };
 
 type StatusFilter = 'all' | 'failed' | 'running' | 'queued' | 'completed';
 
 export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
+  downloadBusy = false,
   onRefreshWorkflow,
   onNavigatePlayer,
 }) => {
@@ -54,6 +58,8 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
   const [rawText, setRawText] = useState('');
   const [resolvedVideos, setResolvedVideos] = useState<DirectVideoItem[]>([]);
   const [invalidUrls, setInvalidUrls] = useState<string[]>([]);
+  const [unavailable, setUnavailable] = useState<DirectUnavailableItem[]>([]);
+  const [truncated, setTruncated] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -96,9 +102,11 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
     onSuccess: (data) => {
       setResolvedVideos(data.videos);
       setInvalidUrls(data.invalid_urls);
+      setUnavailable(data.unavailable ?? []);
+      setTruncated(Boolean(data.truncated));
       setErrorMsg(null);
-      if (data.videos.length === 0 && data.invalid_urls.length > 0) {
-        setErrorMsg('Không tìm thấy video hợp lệ nào từ các liên kết đã cung cấp.');
+      if (data.videos.length === 0) {
+        setErrorMsg('Không tìm thấy video tải được từ các liên kết đã cung cấp.');
       } else {
         setSuccessMsg(`Đã phân tích ${data.videos.length} bài hát.`);
         setTimeout(() => setSuccessMsg(null), 4000);
@@ -166,6 +174,13 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
 
   const handleUpdateItem = (videoId: string, updates: Partial<DirectVideoItem>) => {
     setResolvedVideos((prev) => prev.map((item) => (item.video_id === videoId ? { ...item, ...updates } : item)));
+  };
+
+  const clearResolved = () => {
+    setResolvedVideos([]);
+    setInvalidUrls([]);
+    setUnavailable([]);
+    setTruncated(false);
   };
 
   const handleRemoveItem = (videoId: string) => {
@@ -274,7 +289,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
                 )}
               </div>
               {rawText && (
-                <button type="button" onClick={() => { setRawText(''); setResolvedVideos([]); setInvalidUrls([]); }} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors" aria-label="Xóa tất cả">
+                <button type="button" onClick={() => { setRawText(''); clearResolved(); }} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors" aria-label="Xóa tất cả">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               )}
@@ -292,6 +307,7 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
               <p className="text-xs text-zinc-500">Hỗ trợ video, Shorts, Playlist</p>
               <button
                 type="button"
+                id="analyze-urls-btn"
                 disabled={rawUrlsCount === 0 || resolveMutation.isPending}
                 onClick={handleAnalyzeClick}
                 className="px-4 py-2 text-sm font-semibold rounded-lg bg-spotify-500 hover:bg-spotify-400 disabled:opacity-40 text-zinc-950 flex items-center gap-2 transition-all cursor-pointer"
@@ -300,6 +316,43 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Links that will not be downloaded */}
+          {(invalidUrls.length > 0 || unavailable.length > 0 || truncated) && (
+            <div id="direct-resolve-report" className="shrink-0 glass-panel p-3 rounded-xl border border-amber-500/20 space-y-2">
+              {truncated && (
+                <p className="text-xs text-amber-300 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />Chỉ lấy {resolvedVideos.length} bài đầu tiên; mỗi lượt tối đa 1000 bài.
+                </p>
+              )}
+              {unavailable.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-amber-300 flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />{unavailable.length} video không tải được, đã bỏ khỏi danh sách
+                  </p>
+                  <ul className="mt-1 max-h-24 overflow-y-auto space-y-0.5">
+                    {unavailable.map((item) => (
+                      <li key={item.video_id} className="text-[11px] font-mono text-zinc-400 truncate" title={item.url}>
+                        {item.video_id} · <span className="text-zinc-500">{ERROR_CODE_LABELS[item.code]?.label ?? item.message}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {invalidUrls.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-amber-300 flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />{invalidUrls.length} liên kết không nhận dạng được
+                  </p>
+                  <ul className="mt-1 max-h-24 overflow-y-auto space-y-0.5">
+                    {invalidUrls.map((url) => (
+                      <li key={url} className="text-[11px] font-mono text-zinc-500 truncate" title={url}>{url}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Video List - Full scroll */}
           {resolvedVideos.length > 0 ? (
@@ -315,18 +368,11 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
                   <button type="button" onClick={handleAutoCleanTitles} className="px-2.5 py-1 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer" aria-label="Làm sạch tiêu đề">
                     <Wand2 className="w-3.5 h-3.5 text-spotify-400" /><span>Làm sạch</span>
                   </button>
-                  <button type="button" onClick={() => setResolvedVideos([])} className="px-2 py-1 text-xs rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer" aria-label="Xóa tất cả">
+                  <button type="button" onClick={clearResolved} className="px-2 py-1 text-xs rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer" aria-label="Xóa tất cả">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
-
-              {/* Invalid URLs */}
-              {invalidUrls.length > 0 && (
-                <div className="shrink-0 p-2 bg-amber-500/10 border-b border-amber-500/20">
-                  <p className="text-xs text-amber-300 flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5" />{invalidUrls.length} liên kết không hợp lệ</p>
-                </div>
-              )}
 
               {/* Scrollable List */}
               <div className="flex-1 min-h-0 overflow-y-auto">
@@ -492,11 +538,13 @@ export const QuickDownloadView: React.FC<QuickDownloadViewProps> = ({
           </div>
           <button
             type="button"
-            disabled={resolvedVideos.length === 0 || submitMutation.isPending}
+            id="start-direct-download-btn"
+            disabled={resolvedVideos.length === 0 || submitMutation.isPending || downloadBusy}
+            title={downloadBusy ? 'Đang có lượt tải khác chạy; đợi xong hoặc tạm dừng trước.' : undefined}
             onClick={handleStartDownload}
             className="px-6 py-2.5 text-sm font-bold rounded-xl bg-spotify-500 hover:bg-spotify-400 disabled:opacity-40 text-zinc-950 flex items-center gap-2 transition-all shadow-lg shadow-spotify-500/25 cursor-pointer"
           >
-            {submitMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Đang khởi tạo...</span></> : <><Play className="w-4 h-4 fill-current" /><span>Bắt đầu tải {resolvedVideos.length > 0 ? `(${resolvedVideos.length})` : ''}</span></>}
+            {submitMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Đang khởi tạo...</span></> : downloadBusy ? <><Loader2 className="w-4 h-4" /><span>Đang có lượt tải chạy</span></> : <><Play className="w-4 h-4 fill-current" /><span>Bắt đầu tải {resolvedVideos.length > 0 ? `(${resolvedVideos.length})` : ''}</span></>}
           </button>
         </div>
       </div>

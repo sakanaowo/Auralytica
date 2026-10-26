@@ -1,6 +1,7 @@
 """Browser fixture: real HTTP/database/worker, synthetic audio and controlled errors."""
 from contextlib import closing
 from pathlib import Path
+import subprocess
 import sys
 import threading
 import time
@@ -22,7 +23,13 @@ def launch(database, batch_id):
             if video_id == '00000000001' and not marker.exists():
                 marker.touch()
                 raise DownloadFailure('unavailable', 'fixture unavailable')
-            path = directory/'audio.webm'; path.write_bytes(b'fixture audio')
+            path = directory/'audio.webm'
+            if (root/'real-audio').exists():
+                # Quick download always transcodes, so ffmpeg needs a decodable source.
+                subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=d=1',
+                                '-c:a', 'libopus', str(path)], check=True)
+            else:
+                path.write_bytes(b'fixture audio')
             return dict(id=video_id, path=str(path), acodec='opus', vcodec='none')
         with closing(open_database(database)) as db:
             run_batch(db, batch_id, adapter=adapter)

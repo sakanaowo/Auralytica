@@ -285,7 +285,9 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
   const isSkipping = skipFailedMutation.isPending || skipItemMutation.isPending;
 
   const preview = previewQuery.data;
-  const canStart = (preview?.needed ?? 0) > 0 && !batchLocked && !startMutation.isPending;
+  // The single worker also serves quick downloads, which do not set batchLocked.
+  const directBatchActive = batches.some((b) => b.kind === 'direct' && (b.status === 'running' || b.status === 'queued'));
+  const canStart = (preview?.needed ?? 0) > 0 && !batchLocked && !hasActiveBatch && !startMutation.isPending;
 
   const counts = currentBatch?.counts || {};
   const completedCount = (counts.completed || 0) + (counts.skipped || 0);
@@ -363,7 +365,9 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
           >
             {startMutation.isPending
               ? 'Đang khởi tạo...'
-              : preview && preview.needed > 0
+              : directBatchActive
+                ? 'Đợi lượt Tải nhanh xong'
+                : preview && preview.needed > 0
                 ? `Tải ${preview.needed} bài còn thiếu`
                 : preview && preview.needed === 0
                   ? 'Đã có đủ file trên máy'
@@ -526,7 +530,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
               >
                 {batches.map((b) => (
                   <option key={b.batch_id} value={b.batch_id}>
-                    #{b.batch_id} · {BATCH_STATUS_LABELS[b.status] || b.status} · {b.total} video
+                    #{b.batch_id}{b.kind === 'direct' ? ' · Tải nhanh' : ''} · {BATCH_STATUS_LABELS[b.status] || b.status} · {b.total} video
                   </option>
                 ))}
               </select>

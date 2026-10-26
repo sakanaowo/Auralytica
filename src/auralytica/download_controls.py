@@ -38,7 +38,8 @@ def batch_status(db, batch_id=None, *, page=1, page_size=50, status=None):
     filtered_total = db.execute(f'SELECT COUNT(*) FROM download_items d {where_clause}', params).fetchone()[0]
 
     query = (
-        f'SELECT d.*,v.title FROM download_items d JOIN videos v ON v.id=d.video_id {where_clause} '
+        f'SELECT d.*,COALESCE(dd.title,v.title) AS title FROM download_items d JOIN videos v ON v.id=d.video_id '
+        f'LEFT JOIN direct_download_items dd ON dd.batch_id=d.batch_id AND dd.video_id=d.video_id {where_clause} '
         "ORDER BY CASE d.status WHEN 'running' THEN 0 WHEN 'failed' THEN 1 ELSE 2 END,d.video_id LIMIT ? OFFSET ?"
     )
     items = [dict(row) for row in db.execute(query, (*params, page_size, (page-1)*page_size))]
@@ -127,6 +128,18 @@ def retry_item(db, database, batch_id, video_id, launcher=launch_worker):
     return batch
 
 
+def _exclude_from_takeout(db, video_ids):
+    """Skipped Takeout items stay out of future Takeout batches via the dedup selection."""
+    new_rev = int(get_setting(db, 'dedup_selection_revision') or 0) + 1
+    for vid in video_ids:
+        db.execute(
+            "INSERT INTO download_selections(video_id, keep, revision) VALUES(?, 0, ?) "
+            "ON CONFLICT(video_id) DO UPDATE SET keep=0, revision=excluded.revision, updated_at=CURRENT_TIMESTAMP",
+            (vid, new_rev),
+        )
+    set_setting(db, 'dedup_selection_revision', str(new_rev))
+
+
 def skip_item(db, batch_id, video_id):
     """Mark a specific failed item as skipped and exclude it from future downloads."""
     batch = get_batch(db, batch_id)
@@ -144,14 +157,8 @@ def skip_item(db, batch_id, video_id):
             "WHERE batch_id=? AND video_id=?",
             (batch_id, video_id),
         )
-        current_rev = int(get_setting(db, 'dedup_selection_revision') or 0)
-        new_rev = current_rev + 1
-        db.execute(
-            "INSERT INTO download_selections(video_id, keep, revision) VALUES(?, 0, ?) "
-            "ON CONFLICT(video_id) DO UPDATE SET keep=0, revision=excluded.revision, updated_at=CURRENT_TIMESTAMP",
-            (video_id, new_rev),
-        )
-        set_setting(db, 'dedup_selection_revision', str(new_rev))
+        if batch['kind'] == 'takeout':
+            _exclude_from_takeout(db, [video_id])
 
         counts = get_batch(db, batch_id)['counts']
         if not counts.get('failed') and not counts.get('queued') and not counts.get('running'):
@@ -178,15 +185,8 @@ def skip_failed(db, batch_id):
             "WHERE batch_id=? AND status='failed'",
             (batch_id,),
         )
-        current_rev = int(get_setting(db, 'dedup_selection_revision') or 0)
-        new_rev = current_rev + 1
-        for vid in failed_ids:
-            db.execute(
-                "INSERT INTO download_selections(video_id, keep, revision) VALUES(?, 0, ?) "
-                "ON CONFLICT(video_id) DO UPDATE SET keep=0, revision=excluded.revision, updated_at=CURRENT_TIMESTAMP",
-                (vid, new_rev),
-            )
-        set_setting(db, 'dedup_selection_revision', str(new_rev))
+        if batch['kind'] == 'takeout':
+            _exclude_from_takeout(db, failed_ids)
 
         counts = get_batch(db, batch_id)['counts']
         if not counts.get('failed') and not counts.get('queued') and not counts.get('running'):

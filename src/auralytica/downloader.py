@@ -13,9 +13,9 @@ import tempfile
 import threading
 from contextlib import suppress
 
-from .batches import get_batch, worker_session, _completed_file
+from .batches import active_batch, get_batch, worker_session, _completed_file
 from .converter import clean_title, convert_audio_file, parse_artist_title
-from .storage import get_setting, open_database, set_setting, transaction
+from .storage import BatchBusyError, get_setting, open_database, set_setting, transaction
 
 
 class DownloadStopped(Exception):
@@ -158,9 +158,12 @@ def run_batch(db, batch_id, *, adapter=None, concurrency=None):
         format_type = get_setting(db, f'batch_format:{batch_id}') or 'raw'
         clean_names = get_setting(db, f'batch_clean_names:{batch_id}') == '1'
         embed_metadata = get_setting(db, f'batch_embed_metadata:{batch_id}') != '0'
-        is_direct = get_setting(db, f'batch_is_direct:{batch_id}') == '1'
+        is_direct = batch['kind'] == 'direct'
 
-        items = db.execute('SELECT d.*,v.title,v.channel_name FROM download_items d JOIN videos v ON v.id=d.video_id '
+        # Quick-download items carry their own edited tags; Takeout items use the shared videos row.
+        items = db.execute('SELECT d.*,COALESCE(dd.title,v.title) AS title,COALESCE(dd.artist,v.channel_name) AS channel_name '
+                           'FROM download_items d JOIN videos v ON v.id=d.video_id '
+                           'LEFT JOIN direct_download_items dd ON dd.batch_id=d.batch_id AND dd.video_id=d.video_id '
                            'WHERE d.batch_id=? ORDER BY d.video_id', (batch_id,)).fetchall()
         items = [dict(it) for it in items]
 
@@ -422,8 +425,34 @@ def parse_youtube_url(url: str) -> dict | None:
     return None
 
 
-def _fetch_single_video_info(vid: str) -> dict:
-    """Fetch video metadata and thumbnail from YouTube without downloading media."""
+MAX_DIRECT_VIDEOS = 1000
+
+# Flat playlist entries for removed videos keep their slot with one of these titles.
+_PLAYLIST_PLACEHOLDER_TITLES = {'[deleted video]', '[private video]', '[unavailable video]'}
+
+
+def _suggest_tags(vid: str, raw_title: str, raw_channel: str, duration, thumbnail: str | None) -> dict:
+    channel_clean = re.sub(r'\s*-\s*Topic\s*$', '', raw_channel, flags=re.IGNORECASE).strip()
+    title_clean = clean_title(raw_title, strip_video_id=True, clean_youtube_tags=True)
+    suggested_artist, suggested_title = parse_artist_title(title_clean, channel_clean)
+    return {
+        'video_id': vid,
+        'url': f'https://www.youtube.com/watch?v={vid}',
+        'title': suggested_title or title_clean or raw_title,
+        'artist': suggested_artist or channel_clean or raw_channel,
+        'album': 'Auralytica',
+        'channel': raw_channel,
+        'duration': int(duration or 0),
+        'thumbnail_url': thumbnail or f'https://i.ytimg.com/vi/{vid}/hqdefault.jpg',
+    }
+
+
+def _unavailable(vid: str, source: str, code: str, message: str) -> dict:
+    return {'video_id': vid, 'url': source, 'code': code, 'message': message}
+
+
+def _fetch_single_video_info(vid: str, source: str) -> tuple[dict | None, dict | None]:
+    """Fetch metadata without downloading media; return (video, None) or (None, unavailable)."""
     url = f'https://www.youtube.com/watch?v={vid}'
     try:
         import yt_dlp
@@ -436,44 +465,35 @@ def _fetch_single_video_info(vid: str) -> dict:
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            raw_title = info.get('title') or f'YouTube Video [{vid}]'
-            raw_channel = info.get('uploader') or info.get('channel') or 'YouTube'
-            duration = int(info.get('duration') or 0)
-            thumbnail = info.get('thumbnail') or f'https://i.ytimg.com/vi/{vid}/hqdefault.jpg'
-
-            channel_clean = re.sub(r'\s*-\s*Topic\s*$', '', raw_channel, flags=re.IGNORECASE).strip()
-            title_clean = clean_title(raw_title, strip_video_id=True, clean_youtube_tags=True)
-            suggested_artist, suggested_title = parse_artist_title(title_clean, channel_clean)
-
-            return {
-                'video_id': vid,
-                'url': url,
-                'title': suggested_title or title_clean or raw_title,
-                'artist': suggested_artist or channel_clean or raw_channel,
-                'album': 'Auralytica',
-                'channel': raw_channel,
-                'duration': duration,
-                'thumbnail_url': thumbnail,
-            }
-    except Exception:
-        return {
-            'video_id': vid,
-            'url': url,
-            'title': f'YouTube Video [{vid}]',
-            'artist': 'YouTube',
-            'album': 'Auralytica',
-            'channel': 'YouTube',
-            'duration': 0,
-            'thumbnail_url': f'https://i.ytimg.com/vi/{vid}/hqdefault.jpg',
-        }
+    except Exception as exc:
+        from ._ytdlp import summarize_error
+        code, message, _ = summarize_error(exc)
+        return None, _unavailable(vid, source, code, message)
+    raw_title = info.get('title') or f'YouTube Video [{vid}]'
+    raw_channel = info.get('uploader') or info.get('channel') or 'YouTube'
+    return _suggest_tags(vid, raw_title, raw_channel, info.get('duration'), info.get('thumbnail')), None
 
 
 def resolve_direct_urls(urls: list[str]) -> dict:
-    """Resolve a list of raw URLs or IDs into valid video entries and invalid strings."""
+    """Resolve raw URLs or IDs into downloadable videos.
+
+    Lines that are not YouTube links go to invalid_urls; videos YouTube refuses
+    (private, removed, network errors) go to unavailable so they never reach a batch.
+    At most MAX_DIRECT_VIDEOS videos are returned; truncated reports the cut.
+    """
     videos = []
     invalid_urls = []
+    unavailable = []
     seen_ids = set()
-    single_video_ids = []
+    single_videos = []  # (video_id, source line), resolved concurrently below
+    truncated = False
+
+    def has_room():
+        nonlocal truncated
+        if len(videos) + len(single_videos) >= MAX_DIRECT_VIDEOS:
+            truncated = True
+            return False
+        return True
 
     for raw in urls:
         if not raw or not isinstance(raw, str):
@@ -489,12 +509,11 @@ def resolve_direct_urls(urls: list[str]) -> dict:
 
         if parsed['type'] == 'video':
             vid = parsed['id']
-            if vid not in seen_ids:
+            if vid not in seen_ids and has_room():
                 seen_ids.add(vid)
-                single_video_ids.append(vid)
+                single_videos.append((vid, cleaned))
         elif parsed['type'] == 'playlist':
-            playlist_id = parsed['id']
-            playlist_url = f'https://www.youtube.com/playlist?list={playlist_id}'
+            playlist_url = f"https://www.youtube.com/playlist?list={parsed['id']}"
             try:
                 import yt_dlp
                 ydl_opts = {
@@ -506,38 +525,33 @@ def resolve_direct_urls(urls: list[str]) -> dict:
                 }
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(playlist_url, download=False)
-                    entries = info.get('entries') or []
-                    for entry in entries:
-                        if not entry:
-                            continue
-                        vid = entry.get('id')
-                        if vid and vid not in seen_ids:
-                            seen_ids.add(vid)
-                            raw_title = entry.get('title') or f'Track [{vid}]'
-                            raw_channel = entry.get('uploader') or entry.get('channel') or 'YouTube'
-                            channel_clean = re.sub(r'\s*-\s*Topic\s*$', '', raw_channel, flags=re.IGNORECASE).strip()
-                            title_clean = clean_title(raw_title, strip_video_id=True, clean_youtube_tags=True)
-                            suggested_artist, suggested_title = parse_artist_title(title_clean, channel_clean)
-                            videos.append({
-                                'video_id': vid,
-                                'url': f'https://www.youtube.com/watch?v={vid}',
-                                'title': suggested_title or title_clean or raw_title,
-                                'artist': suggested_artist or channel_clean or raw_channel,
-                                'album': 'Auralytica',
-                                'channel': raw_channel,
-                                'duration': int(entry.get('duration') or 0),
-                                'thumbnail_url': f'https://i.ytimg.com/vi/{vid}/hqdefault.jpg',
-                            })
             except Exception:
                 invalid_urls.append(cleaned)
+                continue
+            for entry in info.get('entries') or []:
+                vid = (entry or {}).get('id')
+                if not vid or vid in seen_ids:
+                    continue
+                if not has_room():
+                    break
+                seen_ids.add(vid)
+                raw_title = entry.get('title') or f'Track [{vid}]'
+                if raw_title.strip().casefold() in _PLAYLIST_PLACEHOLDER_TITLES:
+                    unavailable.append(_unavailable(vid, cleaned, 'unavailable',
+                                                    'Video trong playlist đã bị xóa hoặc đặt riêng tư.'))
+                    continue
+                raw_channel = entry.get('uploader') or entry.get('channel') or 'YouTube'
+                videos.append(_suggest_tags(vid, raw_title, raw_channel, entry.get('duration'), None))
 
-    if single_video_ids:
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(single_video_ids))) as executor:
-            fetched = list(executor.map(_fetch_single_video_info, single_video_ids))
-            videos.extend(fetched)
+    if single_videos:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(single_videos))) as executor:
+            for video, failure in executor.map(lambda item: _fetch_single_video_info(*item), single_videos):
+                if video:
+                    videos.append(video)
+                else:
+                    unavailable.append(failure)
 
-    return {'videos': videos, 'invalid_urls': invalid_urls}
+    return {'videos': videos, 'invalid_urls': invalid_urls, 'unavailable': unavailable, 'truncated': truncated}
 
 
 def start_batch_worker(database, batch_id):
@@ -555,9 +569,15 @@ def create_direct_batch(
     launcher=None,
     database_path=None,
 ):
-    """Register videos, create a download batch, and trigger background worker."""
+    """Create a quick-download batch and trigger the background worker.
+
+    Edited tags live in direct_download_items so Takeout titles, channels and
+    groups in the shared videos table are never rewritten.
+    """
     if not videos:
         raise ValueError('Danh sách bài hát trống.')
+    if len(videos) > MAX_DIRECT_VIDEOS:
+        raise ValueError(f'Mỗi lượt Tải nhanh tối đa {MAX_DIRECT_VIDEOS} bài.')
 
     if audio_format in ('mp3', 'mp3_320'):
         format_type = 'mp3'
@@ -570,27 +590,17 @@ def create_direct_batch(
 
     output_path = str(Path(output_dir).expanduser().resolve())
 
-    with transaction(db):
-        # 1. Insert/update videos table with user-curated metadata
-        for v in videos:
-            vid = v['video_id']
-            title = (v.get('title') or '').strip() or f'YouTube Video [{vid}]'
-            artist = (v.get('artist') or v.get('channel') or '').strip() or 'YouTube'
-            thumb = v.get('thumbnail_url') or f'https://i.ytimg.com/vi/{vid}/hqdefault.jpg'
-            db.execute(
-                "INSERT INTO videos (id, title, channel_name, thumbnail_url, user_group) "
-                "VALUES (?, ?, ?, ?, 'music') "
-                "ON CONFLICT(id) DO UPDATE SET "
-                "title=excluded.title, "
-                "channel_name=excluded.channel_name, "
-                "thumbnail_url=COALESCE(videos.thumbnail_url, excluded.thumbnail_url), "
-                "user_group='music'",
-                (vid, title, artist, thumb),
-            )
+    unique = {}
+    for v in videos:
+        unique.setdefault(v['video_id'], v)
 
-        # 2. Insert batch
+    with transaction(db):
+        active = active_batch(db)
+        if active:
+            raise BatchBusyError(f'Lượt tải #{active[0]} đang chờ/chạy; đợi xong hoặc tạm dừng trước khi tạo lượt mới.')
+
         cursor = db.execute(
-            "INSERT INTO download_batches (output_dir, status) VALUES (?, 'queued')",
+            "INSERT INTO download_batches (output_dir, status, kind) VALUES (?, 'queued', 'direct')",
             (output_path,),
         )
         batch_id = cursor.lastrowid
@@ -598,18 +608,26 @@ def create_direct_batch(
         set_setting(db, f'batch_concurrency:{batch_id}', str(max(1, min(concurrency, 8))))
         set_setting(db, f'batch_clean_names:{batch_id}', '1')
         set_setting(db, f'batch_embed_metadata:{batch_id}', '1')
-        set_setting(db, f'batch_is_direct:{batch_id}', '1')
 
-        # 3. Insert download items
-        for v in videos:
-            vid = v['video_id']
+        for vid, v in unique.items():
+            title = (v.get('title') or '').strip() or f'YouTube Video [{vid}]'
+            artist = (v.get('artist') or v.get('channel') or '').strip() or 'YouTube'
+            thumb = v.get('thumbnail_url') or f'https://i.ytimg.com/vi/{vid}/hqdefault.jpg'
+            # download_items needs a videos row; an existing Takeout row stays untouched.
             db.execute(
-                "INSERT INTO download_items (batch_id, video_id, status) "
-                "VALUES (?, ?, 'queued')",
+                "INSERT INTO videos (id, title, channel_name, thumbnail_url) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(id) DO NOTHING",
+                (vid, title, artist, thumb),
+            )
+            db.execute(
+                "INSERT INTO download_items (batch_id, video_id, status) VALUES (?, ?, 'queued')",
                 (batch_id, vid),
             )
+            db.execute(
+                "INSERT INTO direct_download_items (batch_id, video_id, title, artist) VALUES (?, ?, ?, ?)",
+                (batch_id, vid, title, artist),
+            )
 
-    # 4. Trigger worker
     if launcher:
         launcher(database_path or '', batch_id)
     elif database_path:
