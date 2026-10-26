@@ -1,8 +1,8 @@
 # Auralytica — Project Dashboard
 
-Cập nhật: **2026-09-20 · Bắt đầu feature-frontend-redesign trong worktree .worktrees/feature-frontend-redesign. Requirements, Design, Planning và Testing docs đã hoàn tất (lint OK). Bắt đầu Milestone 1.**
+Cập nhật: **2026-10-26 · Branch `feature-studio-direct-download` (Tải nhanh) hoàn thiện, chưa merge vào `master`. Backend 160 test OK; 4/4 test trình duyệt của Tải nhanh/Player/phiên đạt; `test_ui.py` (10 test Takeout) hỏng từ trước.**
 
-> Mục tiêu mới: Tái thiết kế Frontend theo phong cách Apple Pro Liquid Glass (React 19 + Vite + Tailwind CSS), Explore Dual-Pane 50/50, 1-Click Select trên thẻ bài hát, loại bỏ hoàn toàn sticker/icon rườm rà.
+> Ứng dụng hiện có ba chế độ: **Takeout Studio** (Import → Explore → Deduplicate → Download), **Tải nhanh** (tải theo link YouTube) và **Music Player** (thư viện local, playlist, lời bài hát).
 
 Đây là dashboard Markdown theo dõi dự án, cập nhật thủ công khi có thay đổi; không phải tính năng dashboard phân tích trong ứng dụng.
 
@@ -37,6 +37,12 @@ Các link `artifacts/` chỉ hoạt động trên máy có dữ liệu local; th
 | T07: web local và bảng duyệt | Hoàn tất phần duyệt | Hai danh sách, folder drop/picker, ảnh/link, lọc, chuyển từng/hàng loạt và reload; T10 đã nối tải |
 | T09: tải audio và tiếp tục khi lỗi | Hoàn tất core | Mẫu Opus thật 1.430.465 byte giải mã được, lần sau skip; T10 đã nối nút tải |
 | Kiểm thử toàn luồng | T11 đạt | [AC01–AC08](docs/ai/testing/ACCEPTANCE.md) có bằng chứng Linux/JSON; [quickstart sạch](docs/ai/testing/QUICKSTART.md) đạt |
+| Frontend React 19 + Vite | Hoàn tất | [frontend-redesign](docs/ai/implementation/2026-09-20-feature-frontend-redesign.md), [declutter](docs/ai/implementation/2026-09-22-feature-fe-declutter-and-aesthetic-overhaul.md) |
+| Pipeline audio: chuyển mã, tải song song, retry/skip | Hoàn tất | [local-app-and-audio-pipeline](docs/ai/implementation/2026-09-22-feature-local-app-and-audio-pipeline.md) |
+| Music Player local | Hoàn tất (PR #6) | [local-media-player](docs/ai/implementation/2026-09-23-feature-local-media-player.md), [layout Spotify + phím tắt + lời bài hát](docs/ai/implementation/2026-09-26-feature-player-spotify-ui.md) |
+| Quản lý nhiều phiên Takeout | Hoàn tất (PR #4, #5) | [takeout-session-management](docs/ai/implementation/2026-09-26-feature-takeout-session-management.md) |
+| Tải nhanh theo link YouTube | Hoàn tất, chưa merge (schema v7) | [design](docs/ai/design/2026-09-28-feature-studio-direct-download.md), [planning](docs/ai/planning/2026-09-28-feature-studio-direct-download.md), [testing](docs/ai/testing/2026-09-28-feature-studio-direct-download.md) |
+| Giao diện converter (scan/convert/rename thư mục có sẵn) | Chưa có UI | API `/api/converter/*` và hàm trong `client.ts` đã có; route `/convert` chưa có view |
 | Dashboard phân tích trong app | Để sau MVP | Không chặn việc hoàn thành luồng tải |
 
 Không tính phần trăm hoàn thành vì notebook và code sản phẩm có khối lượng khác nhau.
@@ -73,7 +79,7 @@ Lưu ý: 1.687 là kết quả gồm nhãn kênh người dùng và proxy hashta
 
 ## Trạng thái hiện tại và bước sử dụng
 
-M1–M4, T01–T12 và WFT01–WFT09 đã hoàn tất. Chạy `uv run --no-sync auralytica`, mở http://127.0.0.1:8765, rồi đi theo Import → Explore → Deduplicate → Download. Máy mới làm theo [README](README.md) trước.
+M1–M4, T01–T12 và WFT01–WFT09 đã hoàn tất. Sau MVP đã thêm frontend React, pipeline chuyển mã, Music Player, quản lý phiên Takeout và Tải nhanh. Chạy `uv run --no-sync auralytica`, mở http://127.0.0.1:8765, rồi chọn chế độ trên thanh trên cùng. Máy mới làm theo [README](README.md) trước.
 
 Cải tiến tiếp theo nên dựa trên video bị nhận nhầm/bỏ sót hoặc lỗi tải khi dùng thực tế. Dashboard phân tích trong app, HTML và đa nền tảng chưa thuộc phần đã hoàn thành; không tự mở rộng phạm vi từ kết quả MVP.
 
@@ -88,6 +94,9 @@ Các mốc ở cuối tài liệu là lịch sử tại từng thời điểm; t
 | Video xóa/private/tải lỗi | Hiện trạng thái và cho thử lại; không mất các file tải thành công. |
 | JSON/HTML và đa nền tảng | Đã chọn JSON Unicode và Linux desktop trước; HTML, merge nhiều export và đóng gói nền tảng khác để sau. |
 | Chất lượng gợi ý tự động | Fixture độc lập nhỏ đạt precision/recall 0,80/0,80; chưa phải accuracy production. Xem [review WFT09](docs/ai/testing/WFT09_FINAL_REVIEW.md). |
+| Test trình duyệt Takeout | `tests/browser/test_ui.py` (10 test) vẫn dùng selector của UI vanilla JS trước React; hỏng từ 2026-09-20, cần viết lại. |
+| Một worker, không hàng đợi | Chỉ một lượt tải (Takeout hoặc Tải nhanh) chạy tại một thời điểm; lượt mới bị từ chối (409) tới khi lượt cũ xong/tạm dừng. |
+| Rollback sau schema v7 | Bản trước nhánh này không mở được database v7; sao lưu database trước khi cài. |
 
 ## Quy tắc cập nhật dashboard
 
@@ -311,3 +320,18 @@ Security review sửa log yt-dlp để không lưu exception thô, signed URL ho
 - **Import, Deduplicate & Download:** Đã tái thiết kế đồng bộ theo phong cách tối giản cao cấp.
 - **Kiểm thử & Đóng gói:** `npm run build` hoàn tất trong ~700ms; **116/116 unit tests của backend đạt 100% OK**; wheel build đóng gói đầy đủ bundle mới.
 
+
+## Đối chiếu docs với code — 2026-10-26
+
+- Viết lại design/planning/testing của [Tải nhanh](docs/ai/design/2026-09-28-feature-studio-direct-download.md) theo mode `quick_download` đang chạy, thay cho phương án "Step 05 Direct". Điền deployment/monitoring còn để trống.
+- Đánh dấu xong 8 task của [player-spotify-ui](docs/ai/planning/2026-09-26-feature-player-spotify-ui.md); thêm implementation/testing doc, gồm cả phần lời bài hát (LRCLIB).
+- README thêm Tải nhanh, Music Player, phụ thuộc `ffmpeg` và bảng kết nối mạng (có LRCLIB).
+- Kiểm thử: `uv run --no-sync --with httpx python -m unittest discover -s tests` → 151 test OK. Test trình duyệt chưa chạy được (thiếu Chromium bản Playwright 1.62).
+
+## Tải nhanh hoàn thiện — 2026-10-26
+
+- Schema v7: `download_batches.kind` và `direct_download_items`. Tải nhanh không còn ghi đè title/kênh/nhóm của video Takeout. Database thật trên máy có 1 lượt Tải nhanh (3 video, không trùng lịch sử Takeout) nên không có dữ liệu bị ảnh hưởng.
+- Sửa lỗi gửi 2 lượt liên tiếp làm lượt sau kẹt `queued` và khoá Takeout vô hạn; giờ trả 409. Batch Tải nhanh không khoá review Takeout. Skip trong Tải nhanh không đụng `download_selections`.
+- Resolve báo video private/xoá (`unavailable`) và cắt ở 1000 bài; request được validate.
+- Thư mục AI skill (`.agent/`, `.agents/`, `.claude/skills/`, `.gemini/`) đã bỏ khỏi git và vào `.gitignore` (commit `e63740f`).
+- Test: 160 backend OK (thêm 9 test); test Playwright Tải nhanh viết lại, chạy qua server fixture, không gọi YouTube, không ghi vào `~/Music`.
