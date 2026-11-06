@@ -1,6 +1,11 @@
-"""Playwright browser tests for Takeout Studio Direct YouTube Download."""
+"""Playwright browser test for the quick-download (Tải nhanh) workspace.
+
+Runs against download_server.py: real HTTP, database and worker, with a fixture
+adapter instead of yt-dlp, so nothing reaches YouTube or the user's ~/Music.
+"""
 import json
 from pathlib import Path
+import shutil
 import socket
 import subprocess
 import sys
@@ -12,11 +17,14 @@ import urllib.request
 from playwright.sync_api import sync_playwright, expect
 
 
+@unittest.skipUnless(shutil.which('ffmpeg'), 'quick download transcodes with ffmpeg')
 class DirectDownloadBrowserTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        (self.root / 'real-audio').touch()
+        self.music = self.root / 'Music'
 
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0))
@@ -25,15 +33,9 @@ class DirectDownloadBrowserTests(unittest.TestCase):
         self.log = (self.root / 'server.log').open('w')
         self.addCleanup(self.log.close)
 
-        command = [
-            str(Path(sys.executable).parent / 'auralytica'),
-            '--no-browser',
-            '--port',
-            str(port),
-            '--database',
-            str(self.root / 'state.sqlite3'),
-        ]
+        command = [sys.executable, str(Path(__file__).with_name('download_server.py')), str(self.root), str(port)]
         self.server = subprocess.Popen(command, stdout=self.log, stderr=self.log)
+        self.addCleanup(self.server.wait)
         self.addCleanup(self.server.terminate)
 
         for _ in range(60):
@@ -48,91 +50,81 @@ class DirectDownloadBrowserTests(unittest.TestCase):
         self.browser = self.playwright.chromium.launch()
         self.addCleanup(self.browser.close)
         self.page = self.browser.new_page(viewport={'width': 1440, 'height': 900})
+        self.page.route('https://i.ytimg.com/**', lambda route: route.abort())
         self.page.goto(self.url)
 
-    def test_direct_download_navigation_and_submission(self):
+    def test_resolve_edit_download_and_open_player(self):
         page = self.page
 
-        # 1. Clicking Tải nhanh mode button switches to Quick YouTube Downloader
-        quick_mode_btn = page.locator('#mode-quick-download')
-        expect(quick_mode_btn).to_be_visible()
-        quick_mode_btn.click()
-
-        # Header should be visible
-        expect(page.locator('text=Quick YouTube Downloader')).to_be_visible()
-        expect(page.locator('text=Tải nhanh trực tiếp từ YouTube')).to_be_visible()
-
-        # 2. Check input controls
+        # 1. Quick download is reachable without any Takeout import.
+        page.locator('#mode-quick-download').click()
         urls_input = page.locator('#direct-urls-input')
         expect(urls_input).to_be_visible()
         analyze_btn = page.locator('#analyze-urls-btn')
         expect(analyze_btn).to_be_disabled()
 
-        # 3. Fill YouTube URL
-        urls_input.fill('https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+        # 2. Resolution is mocked: deterministic and offline.
+        page.route('**/api/download/direct/resolve', lambda route: route.fulfill(
+            status=200, content_type='application/json', body=json.dumps({
+                'videos': [{
+                    'video_id': 'dQw4w9WgXcQ',
+                    'title': 'Never Gonna Give You Up',
+                    'artist': 'Rick Astley',
+                    'channel': 'Rick Astley',
+                    'duration': 213,
+                }],
+                'invalid_urls': ['not-a-link'],
+                'unavailable': [{'video_id': 'privateVid1', 'url': 'https://youtu.be/privateVid1',
+                                 'code': 'unavailable', 'message': 'Video không khả dụng.'}],
+                'truncated': False,
+            })))
+        urls_input.fill('https://www.youtube.com/watch?v=dQw4w9WgXcQ\nhttps://youtu.be/privateVid1\nnot-a-link')
         expect(analyze_btn).to_be_enabled()
-
-        # 4. Mock the resolution endpoint so test is deterministic and offline-capable
-        def handle_resolve(route):
-            route.fulfill(
-                status=200,
-                content_type="application/json",
-                body=json.dumps({
-                    "videos": [
-                        {
-                            "video_id": "dQw4w9WgXcQ",
-                            "title": "Never Gonna Give You Up",
-                            "artist": "Rick Astley",
-                            "channel": "Rick Astley",
-                            "duration": 213,
-                            "thumbnail_url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
-                        }
-                    ],
-                    "invalid_urls": []
-                })
-            )
-        page.route("**/api/download/direct/resolve", handle_resolve)
-
         analyze_btn.click()
 
-        # 5. Verify resolved item appears in metadata editor list
-        expect(page.locator('text=Danh sách bài hát tìm thấy (1)')).to_be_visible(timeout=5000)
+        # 3. Only the downloadable video is listed; the rest is reported.
         title_input = page.locator('input[value="Never Gonna Give You Up"]')
-        expect(title_input).to_be_visible()
-        artist_input = page.locator('input[value="Rick Astley"]')
-        expect(artist_input).to_be_visible()
+        expect(title_input).to_be_visible(timeout=5000)
+        expect(page.locator('input[value="Rick Astley"]')).to_be_visible()
+        report = page.locator('#direct-resolve-report')
+        expect(report).to_contain_text('1 video không tải được')
+        expect(report).to_contain_text('privateVid1')
+        expect(report).to_contain_text('1 liên kết không nhận dạng được')
 
-        # Test editing metadata inline
-        title_input.fill("Never Gonna Give You Up (Remastered)")
-        expect(page.locator('text=Rick Astley - Never Gonna Give You Up (Remastered)')).to_be_visible()
+        # 4. Inline edit updates the planned file name.
+        title_input.fill('Never Gonna Give You Up (Remastered)')
+        page.locator('button:has-text("MP3 320kbps")').click()
+        expect(page.locator('text=Rick Astley - Never Gonna Give You Up (Remastered).mp3')).to_be_visible()
+        page.locator('#output-dir').fill(str(self.music))
 
-        # 6. Verify start download button is enabled with 1 item
+        # 5. Start; the fixture worker holds the item until released.
         start_btn = page.locator('#start-direct-download-btn')
-        expect(start_btn).to_be_enabled()
-        expect(start_btn).to_contain_text('(1 bài)')
-
-        # 7. Click Start Download (this reaches real /api/download/direct on backend)
+        expect(start_btn).to_contain_text('(1)')
         start_btn.click()
+        expect(page.locator('text=Tiến trình #1')).to_be_visible(timeout=5000)
 
-        # 8. Verify active batch progress monitor displays batch information
-        expect(page.locator('text=Tiến trình tải lượt #1')).to_be_visible(timeout=5000)
-        expect(page.locator('text=Đã tạo lượt tải #1 gồm 1 bài hát.')).to_be_visible()
+        # 6. While the worker is busy, a second batch cannot be started.
+        expect(start_btn).to_be_disabled(timeout=10000)
+        expect(start_btn).to_contain_text('Đang có lượt tải chạy')
 
-        screenshot_dir = Path('artifacts/browser-runs')
-        screenshot_dir.mkdir(parents=True, exist_ok=True)
-        view_screenshot = screenshot_dir / 'direct-download-view-verified.png'
-        page.screenshot(path=str(view_screenshot), full_page=True)
-        self.assertTrue(view_screenshot.exists())
+        # 7. Release the worker; the edited tags name the transcoded file.
+        (self.root / 'release').touch()
+        expect(page.locator('text=Hoàn tất').first).to_be_visible(timeout=20000)
+        expected = self.music / 'Rick Astley - Never Gonna Give You Up (Remastered).mp3'
+        for _ in range(50):
+            if expected.exists():
+                break
+            time.sleep(0.1)
+        self.assertTrue(expected.is_file(), sorted(p.name for p in self.music.glob('*')))
 
-        # 9. Verify navigation button to Player
-        player_nav_btn = page.locator('button:has-text("Mở Music Player")')
-        expect(player_nav_btn).to_be_visible()
-        player_nav_btn.click()
+        # 8. Quick download never touches Takeout review state.
+        workflow = json.loads(urllib.request.urlopen(self.url + '/api/workflow').read())
+        self.assertFalse(workflow['batch_locked'])
 
-        # 10. Verify we switched to Music Player workspace
-        expect(page.locator('text=Trình phát nhạc')).to_be_visible(timeout=5000)
+        # 9. The player opens from the batch monitor.
+        page.locator('button:has-text("Mở Player")').click()
+        expect(page.locator('text=Thư viện của bạn')).to_be_visible(timeout=5000)
 
-        # 11. Capture evidence screenshot
-        screenshot_path = screenshot_dir / 'direct-download-verified.png'
-        page.screenshot(path=str(screenshot_path), full_page=True)
-        self.assertTrue(screenshot_path.exists())
+
+if __name__ == '__main__':
+    unittest.main()

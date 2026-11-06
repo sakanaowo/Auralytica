@@ -4,7 +4,10 @@ export interface WorkflowState {
     music: number;
     rest: number;
   };
+  /** Takeout review lock: a Takeout batch is queued/running. */
   batch_locked: boolean;
+  /** Any batch (Takeout or quick download) occupies the single download worker. */
+  download_busy?: boolean;
   steps: {
     import: 'ready' | 'locked' | 'needs_import';
     explore: 'ready' | 'needs_import';
@@ -179,6 +182,7 @@ export type AudioFormat = 'm4a_alac' | 'm4a_aac' | 'mp3' | 'raw';
 
 export interface DownloadBatch {
   batch_id: number;
+  kind?: 'takeout' | 'direct';
   status: 'queued' | 'running' | 'paused' | 'completed' | 'partial' | 'failed' | 'cancelled';
   output_dir: string;
   format?: AudioFormat;
@@ -365,9 +369,18 @@ export interface DirectVideoItem {
   thumbnail_url?: string;
 }
 
+export interface DirectUnavailableItem {
+  video_id: string;
+  url: string;
+  code: string;
+  message: string;
+}
+
 export interface DirectDownloadResolveResponse {
   videos: DirectVideoItem[];
   invalid_urls: string[];
+  unavailable: DirectUnavailableItem[];
+  truncated: boolean;
 }
 
 export interface DirectDownloadSubmitRequest {

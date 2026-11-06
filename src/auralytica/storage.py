@@ -6,7 +6,7 @@ import sqlite3
 from collections.abc import Iterator
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 class BatchBusyError(ValueError):
@@ -17,9 +17,15 @@ class RevisionConflict(ValueError):
     """A persisted snapshot no longer matches the current library."""
 
 
+def review_locked(db):
+    """Only Takeout batches freeze the library; quick-download batches do not read it."""
+    return db.execute("SELECT 1 FROM download_batches WHERE status IN ('queued','running') "
+                      "AND kind='takeout' LIMIT 1").fetchone() is not None
+
+
 def assert_review_unlocked(db):
     """Call inside the same write transaction as the review mutation."""
-    if db.execute("SELECT 1 FROM download_batches WHERE status IN ('queued','running') LIMIT 1").fetchone():
+    if review_locked(db):
         raise BatchBusyError('Có batch đang chờ/chạy; dừng batch trước khi thay đổi thư viện.')
 
 # Version 1 is the initial application schema, not a notebook database upgrade.
@@ -238,6 +244,29 @@ CREATE TABLE player_lyrics_cache (
 CREATE INDEX idx_lyrics_cache_path ON player_lyrics_cache(track_path);
 """
 
+# Quick-download batches keep user-edited tags per item instead of rewriting
+# the shared videos rows that Takeout review and dedup depend on.
+_SCHEMA_V7 = """
+ALTER TABLE download_batches ADD COLUMN kind TEXT NOT NULL DEFAULT 'takeout'
+    CHECK (kind IN ('takeout', 'direct'));
+UPDATE download_batches SET kind='direct' WHERE id IN (
+    SELECT CAST(substr(key, 17) AS INTEGER) FROM settings
+    WHERE key LIKE 'batch_is_direct:%' AND value='1');
+CREATE TABLE direct_download_items (
+    batch_id INTEGER NOT NULL,
+    video_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    artist TEXT NOT NULL,
+    PRIMARY KEY (batch_id, video_id),
+    FOREIGN KEY (batch_id, video_id) REFERENCES download_items(batch_id, video_id)
+);
+INSERT INTO direct_download_items(batch_id, video_id, title, artist)
+    SELECT d.batch_id, d.video_id, v.title, COALESCE(v.channel_name, '')
+    FROM download_items d JOIN download_batches b ON b.id=d.batch_id JOIN videos v ON v.id=d.video_id
+    WHERE b.kind='direct';
+DELETE FROM settings WHERE key LIKE 'batch_is_direct:%'
+"""
+
 
 @contextmanager
 def transaction(db: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
@@ -301,6 +330,11 @@ def open_database(path: str | Path) -> sqlite3.Connection:
                     if statement.strip():
                         db.execute(statement)
                 db.execute("PRAGMA user_version=6")
+            if version < 7:
+                for statement in _SCHEMA_V7.split(';'):
+                    if statement.strip():
+                        db.execute(statement)
+                db.execute("PRAGMA user_version=7")
         return db
     except BaseException:
         db.close()

@@ -10,7 +10,7 @@ import sqlite3
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from .storage import get_setting, set_setting, transaction, assert_review_unlocked
+from .storage import get_setting, set_setting, transaction, assert_review_unlocked, review_locked
 from .classification import classify_import
 
 
@@ -157,8 +157,7 @@ def get_import_sessions(db: sqlite3.Connection) -> dict[str, Any]:
     active_id = int(active_str) if active_str else None
 
     # Check if download batches are currently locked
-    batches = db.execute("SELECT status FROM download_batches").fetchall()
-    batch_locked = any(row['status'] in ('queued', 'running') for row in batches)
+    batch_locked = review_locked(db)
 
     rows = db.execute(
         "SELECT id, source_hash, source_name, created_at, statistics_json "

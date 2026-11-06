@@ -127,6 +127,7 @@ export const App: React.FC = () => {
           <PlayerWorkspace />
         ) : appMode === 'quick_download' ? (
           <QuickDownloadView
+            downloadBusy={!!workflow?.download_busy}
             onRefreshWorkflow={refetchWorkflow}
             onNavigatePlayer={() => handleModeChange('player')}
           />

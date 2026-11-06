@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from auralytica import downloader, storage, web
+from auralytica import download_controls, downloader, storage, web
 
 
 class DirectDownloadUnitTests(unittest.TestCase):
@@ -125,17 +125,21 @@ class DirectDownloadUnitTests(unittest.TestCase):
 
         self.assertIsInstance(batch_id, int)
         batch = downloader.get_batch(self.db, batch_id)
+        self.assertEqual(batch["kind"], "direct")
         self.assertEqual(batch["output_dir"], output_dir)
         self.assertEqual(batch["format"], "m4a_alac")
         self.assertEqual(batch["status"], "queued")
         self.assertEqual(batch["total"], 2)
 
-        # Verify videos table populated
+        # A videos row backs the download_items FK, without claiming a Takeout group.
         vid_row = storage.get_video(self.db, "direct_vid01")
         self.assertIsNotNone(vid_row)
-        self.assertEqual(vid_row["title"], "Direct Song One")
-        self.assertEqual(vid_row["effective_group"], "music")
-        self.assertEqual(vid_row["user_group"], "music")
+        self.assertIsNone(vid_row["user_group"])
+        tags = self.db.execute(
+            "SELECT title, artist FROM direct_download_items WHERE batch_id=? AND video_id=?",
+            (batch_id, "direct_vid01"),
+        ).fetchone()
+        self.assertEqual(tuple(tags), ("Direct Song One", "Direct Channel"))
 
         mock_start.assert_called_once()
 
@@ -160,9 +164,10 @@ class DirectDownloadUnitTests(unittest.TestCase):
         batch = downloader.get_batch(self.db, batch_id)
         self.assertEqual(batch["format"], "mp3")
         self.assertEqual(batch["concurrency"], 4)
-        vid_row = storage.get_video(self.db, "custom_vid01")
-        self.assertEqual(vid_row["title"], "Custom Song Title")
-        self.assertEqual(vid_row["channel_name"], "Custom Singer")
+        tags = self.db.execute(
+            "SELECT title, artist FROM direct_download_items WHERE batch_id=?", (batch_id,)
+        ).fetchone()
+        self.assertEqual(tuple(tags), ("Custom Song Title", "Custom Singer"))
 
     def test_direct_download_api_endpoints(self):
         """Test API endpoints /api/download/direct/resolve and /api/download/direct."""
@@ -170,12 +175,15 @@ class DirectDownloadUnitTests(unittest.TestCase):
         client = TestClient(app, base_url="http://127.0.0.1:8765")
         headers = {"Origin": "http://127.0.0.1:8765"}
 
-        # 1. Resolve endpoint
-        resolve_resp = client.post(
-            "/api/download/direct/resolve",
-            json={"urls": ["https://www.youtube.com/watch?v=dQw4w9WgXcQ", "garbage_link"]},
-            headers=headers,
-        )
+        # 1. Resolve endpoint (yt-dlp metadata mocked: no network in unit tests)
+        fake_info = {"title": "Rick Astley - Never Gonna Give You Up", "uploader": "Rick Astley", "duration": 213}
+        import yt_dlp
+        with patch.object(yt_dlp.YoutubeDL, "extract_info", return_value=fake_info):
+            resolve_resp = client.post(
+                "/api/download/direct/resolve",
+                json={"urls": ["https://www.youtube.com/watch?v=dQw4w9WgXcQ", "garbage_link"]},
+                headers=headers,
+            )
         self.assertEqual(resolve_resp.status_code, 200)
         resolve_data = resolve_resp.json()
         self.assertEqual(len(resolve_data["videos"]), 1)
@@ -231,3 +239,158 @@ class DirectDownloadUnitTests(unittest.TestCase):
         self.assertIsNotNone(row)
         self.assertEqual(row["title"], "Downloaded Song")
         self.assertEqual(row["artist"], "Downloaded Artist")
+
+
+class DirectDownloadResolveTests(unittest.TestCase):
+    def test_unreachable_videos_and_playlist_placeholders_are_reported_not_queued(self):
+        import yt_dlp
+
+        playlist = {"entries": [
+            {"id": "okPlaylist1", "title": "Artist - Song", "uploader": "Artist"},
+            {"id": "gonePlayli1", "title": "[Private video]", "uploader": None},
+            {"id": "gonePlayli2", "title": "[Deleted video]"},
+        ]}
+
+        def extract(self_, url, download=False):
+            if "playlist" in url:
+                return playlist
+            if "privateVid1" in url:
+                raise yt_dlp.utils.DownloadError("ERROR: [youtube] privateVid1: Private video. Sign in")
+            return {"title": "Live Song", "uploader": "Live Artist", "duration": 100}
+
+        with patch.object(yt_dlp.YoutubeDL, "extract_info", extract):
+            result = downloader.resolve_direct_urls([
+                "https://youtu.be/privateVid1",
+                "https://youtu.be/liveVideo01",
+                "https://www.youtube.com/playlist?list=PLx",
+            ])
+
+        self.assertEqual(sorted(v["video_id"] for v in result["videos"]), ["liveVideo01", "okPlaylist1"])
+        gone = {item["video_id"]: item for item in result["unavailable"]}
+        self.assertEqual(set(gone), {"privateVid1", "gonePlayli1", "gonePlayli2"})
+        self.assertEqual(gone["privateVid1"]["code"], "unavailable")
+        self.assertEqual(gone["privateVid1"]["url"], "https://youtu.be/privateVid1")
+        self.assertEqual(result["invalid_urls"], [])
+        self.assertFalse(result["truncated"])
+
+    def test_resolve_caps_video_count(self):
+        import yt_dlp
+        playlist = {"entries": [{"id": f"capVideo{i:03d}", "title": f"Song {i}"} for i in range(5)]}
+        with patch.object(downloader, "MAX_DIRECT_VIDEOS", 3), \
+                patch.object(yt_dlp.YoutubeDL, "extract_info", return_value=playlist):
+            result = downloader.resolve_direct_urls(["https://www.youtube.com/playlist?list=PLcap"])
+        self.assertEqual(len(result["videos"]), 3)
+        self.assertTrue(result["truncated"])
+
+
+class DirectDownloadIsolationTests(unittest.TestCase):
+    """Quick-download batches must not alter Takeout review state."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.root = Path(self.temp_dir.name)
+        self.db_path = self.root / "state.sqlite3"
+        self.db = storage.open_database(str(self.db_path))
+        self.addCleanup(self.db.close)
+        self.db.execute(
+            "INSERT INTO videos(id, title, channel_name, auto_group, user_group) "
+            "VALUES ('takeoutVid1', 'Takeout Title', 'Takeout Channel', 'rest', 'rest')"
+        )
+
+    def _direct(self, video_id="takeoutVid1", title="Edited Title", artist="Edited Artist"):
+        return downloader.create_direct_batch(
+            self.db, videos=[{"video_id": video_id, "title": title, "artist": artist}],
+            output_dir=str(self.root / "Music"), audio_format="raw", launcher=lambda *_: None,
+        )
+
+    def test_existing_takeout_video_is_not_rewritten(self):
+        batch_id = self._direct()
+        row = storage.get_video(self.db, "takeoutVid1")
+        self.assertEqual((row["title"], row["channel_name"], row["user_group"]),
+                         ("Takeout Title", "Takeout Channel", "rest"))
+        status = download_controls.batch_status(self.db, batch_id)
+        self.assertEqual(status["items"][0]["title"], "Edited Title")
+
+    def test_direct_batch_does_not_lock_review_but_occupies_worker(self):
+        from auralytica import batches
+        self._direct()
+        storage.assert_review_unlocked(self.db)  # does not raise
+        self.assertFalse(storage.review_locked(self.db))
+        with self.assertRaisesRegex(storage.BatchBusyError, "Tải nhanh"):
+            batches.create_batch(self.db, str(self.root / "Music"))
+        with self.assertRaises(storage.BatchBusyError):
+            self._direct(video_id="anotherVid1")
+
+    def test_takeout_batch_still_locks_review(self):
+        self.db.execute("INSERT INTO download_batches(output_dir, status) VALUES ('/tmp/x', 'running')")
+        self.assertTrue(storage.review_locked(self.db))
+        with self.assertRaises(storage.BatchBusyError):
+            self._direct()
+
+    def test_skipping_failed_direct_items_keeps_takeout_selection(self):
+        batch_id = self._direct()
+        self.db.execute("UPDATE download_items SET status='failed' WHERE batch_id=?", (batch_id,))
+        self.db.execute("UPDATE download_batches SET status='partial' WHERE id=?", (batch_id,))
+        download_controls.skip_failed(self.db, batch_id)
+        self.assertIsNone(self.db.execute(
+            "SELECT 1 FROM download_selections WHERE video_id='takeoutVid1'").fetchone())
+
+    def test_run_batch_tags_and_names_files_from_edited_metadata(self):
+        batch_id = self._direct(title="Edited Title", artist="Edited Artist")
+
+        def adapter(video_id, directory, progress, stopped, lock_fd):
+            path = directory / "audio.webm"
+            path.write_bytes(b"fixture audio")
+            return dict(id=video_id, path=str(path), acodec="opus", vcodec="none",
+                        title="YouTube Title", artist="YouTube Channel")
+
+        result = downloader.run_batch(self.db, batch_id, adapter=adapter)
+        self.assertEqual(result["status"], "completed")
+        file_path = Path(self.db.execute(
+            "SELECT file_path FROM download_items WHERE batch_id=?", (batch_id,)).fetchone()[0])
+        self.assertEqual(file_path.name, "Edited Artist - Edited Title.webm")
+
+    def test_workflow_reports_busy_without_review_lock(self):
+        self._direct()
+        app = web.create_app(str(self.db_path), port=8765)
+        client = TestClient(app, base_url="http://127.0.0.1:8765")
+        workflow = client.get("/api/workflow").json()
+        self.assertFalse(workflow["batch_locked"])
+        self.assertTrue(workflow["download_busy"])
+        busy = client.post("/api/download/direct", headers={"Origin": "http://127.0.0.1:8765"}, json={
+            "videos": [{"video_id": "anotherVid1"}], "output_dir": str(self.root / "Music")})
+        self.assertEqual(busy.status_code, 409)
+        invalid = client.post("/api/download/direct", headers={"Origin": "http://127.0.0.1:8765"}, json={
+            "videos": [{"video_id": "bad"}], "output_dir": str(self.root / "Music")})
+        self.assertEqual(invalid.status_code, 422)
+
+
+class DirectDownloadMigrationTests(unittest.TestCase):
+    def test_v6_direct_batches_get_kind_and_backfilled_tags(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "legacy.sqlite3"
+            db = storage.open_database(path)
+            db.close()
+            legacy = sqlite3.connect(path)
+            # Rebuild the v6 shape: drop what v7 added, keep a v6-era direct batch.
+            legacy.executescript("""
+                DROP TABLE direct_download_items;
+                ALTER TABLE download_batches DROP COLUMN kind;
+                INSERT INTO videos(id, title, channel_name) VALUES ('legacyVid01', 'Old Edited', 'Old Artist');
+                INSERT INTO download_batches(id, output_dir, status) VALUES (5, '/tmp/m', 'completed');
+                INSERT INTO download_batches(id, output_dir, status) VALUES (6, '/tmp/m', 'completed');
+                INSERT INTO download_items(batch_id, video_id, status) VALUES (5, 'legacyVid01', 'completed');
+                INSERT INTO settings(key, value) VALUES ('batch_is_direct:5', '1');
+                PRAGMA user_version=6;
+            """)
+            legacy.close()
+            db = storage.open_database(path)
+            try:
+                kinds = dict(db.execute("SELECT id, kind FROM download_batches").fetchall())
+                self.assertEqual(kinds, {5: "direct", 6: "takeout"})
+                tags = db.execute("SELECT title, artist FROM direct_download_items WHERE batch_id=5").fetchone()
+                self.assertEqual(tuple(tags), ("Old Edited", "Old Artist"))
+                self.assertIsNone(db.execute("SELECT 1 FROM settings WHERE key LIKE 'batch_is_direct:%'").fetchone())
+            finally:
+                db.close()

@@ -156,25 +156,25 @@ class ConverterStartRequest(BaseModel):
 
 
 class DirectDownloadResolveRequest(BaseModel):
-    urls: list[str]
+    urls: list[Annotated[str, StringConstraints(max_length=2048)]] = Field(min_length=1, max_length=500)
 
 
 class DirectVideoItem(BaseModel):
-    video_id: str
-    url: str | None = None
-    title: str | None = None
-    artist: str | None = None
-    album: str | None = None
-    channel: str | None = None
+    video_id: VideoID
+    url: str | None = Field(default=None, max_length=2048)
+    title: str | None = Field(default=None, max_length=500)
+    artist: str | None = Field(default=None, max_length=500)
+    album: str | None = Field(default=None, max_length=500)
+    channel: str | None = Field(default=None, max_length=500)
     duration: int | None = None
-    thumbnail_url: str | None = None
+    thumbnail_url: str | None = Field(default=None, max_length=2048)
 
 
 class DirectDownloadSubmitRequest(BaseModel):
-    videos: list[DirectVideoItem]
-    output_dir: str
-    format: str = "m4a_alac"
-    concurrency: int = 3
+    videos: list[DirectVideoItem] = Field(min_length=1, max_length=downloader.MAX_DIRECT_VIDEOS)
+    output_dir: str = Field(min_length=1, max_length=4096)
+    format: Literal['m4a_alac', 'alac', 'm4a_aac', 'aac', 'mp3', 'mp3_320', 'raw'] = 'm4a_alac'
+    concurrency: int = Field(default=3, ge=1, le=8)
 
 
 class RenameItem(BaseModel):
@@ -333,9 +333,12 @@ def create_app(database: str | Path | None = None, *, port=8765, max_body_bytes=
             ).fetchall()
             counts = {group: sum(row['selected_group'] == group for row in rows)
                       for group in ('music', 'rest')}
-            batches = [tuple(row) for row in db.execute('SELECT id, status FROM download_batches ORDER BY id')]
-            locked = any(status in ('queued', 'running') for _, status in batches)
+            batches = [tuple(row) for row in db.execute('SELECT id, status, kind FROM download_batches ORDER BY id')]
+            # Only Takeout batches lock review; any active batch occupies the single worker.
+            locked = any(status in ('queued', 'running') and kind == 'takeout' for _, status, kind in batches)
+            busy = any(status in ('queued', 'running') for _, status, _ in batches)
             result = dict(active_import=int(active) if active else None, counts=counts, batch_locked=locked,
+                          download_busy=busy,
                           steps=dict(import_='locked' if locked else 'ready',
                                      explore='ready' if active else 'needs_import',
                                      deduplicate=('ready' if counts['music'] else 'no_music') if active else 'needs_import',

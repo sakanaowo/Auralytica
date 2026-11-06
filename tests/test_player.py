@@ -25,7 +25,7 @@ class PlayerBackendTests(unittest.TestCase):
     def test_database_schema_v6_creates_player_tables(self):
         tables = {row[0] for row in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertTrue({'player_playlists', 'player_playlist_tracks', 'player_favorites', 'player_track_cache', 'player_lyrics_cache'} <= tables)
-        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 6)
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 7)
 
     def test_scanner_detects_audio_files_and_caches_metadata(self):
         # Create dummy audio files
